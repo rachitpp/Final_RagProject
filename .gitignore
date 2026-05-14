@@ -17,8 +17,9 @@ dist/
 *.egg-info/
 *.egg
 
-# Environment variables (contains secrets)
+# Secrets and credentials
 .env
+*.json
 
 # Vector database storage
 qdrant_data/
