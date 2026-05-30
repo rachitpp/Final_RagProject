@@ -21,9 +21,19 @@ def _make_client() -> QdrantClient:
 
 
 def _ensure_collection(client: QdrantClient) -> None:
-    """Create the collection with cosine distance if it doesn't exist."""
+    """
+    (Re)create the collection with cosine distance.
+
+    create_db.py is a full rebuild, so we DROP any existing collection
+    first. Without this, re-ingesting just appends new chunks on top of
+    whatever was there before, leaving stale chunks that pollute retrieval.
+    """
     if client.collection_exists(settings.qdrant_collection):
-        return
+        client.delete_collection(settings.qdrant_collection)
+        logger.info(
+            f"Dropped existing collection '{settings.qdrant_collection}' "
+            "for a clean rebuild"
+        )
     client.create_collection(
         collection_name=settings.qdrant_collection,
         vectors_config=VectorParams(

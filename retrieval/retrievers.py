@@ -1,3 +1,4 @@
+import re
 from typing import List
 from langchain_qdrant import QdrantVectorStore
 from langchain_community.retrievers import BM25Retriever
@@ -7,6 +8,18 @@ from config.settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+def _bm25_tokenize(text: str) -> List[str]:
+    """
+    Lowercase + split on non-alphanumerics.
+
+    BM25Retriever's default tokenizer is a bare str.split(), so tokens keep
+    their punctuation and case: 'Pune.' never matches a query token 'pune'.
+    Our tables are full of punctuation (markdown pipes, trailing periods),
+    so we normalize both sides with this.
+    """
+    return re.findall(r"[a-z0-9]+", text.lower())
 
 
 def build_vector_retriever(store: QdrantVectorStore):
@@ -55,7 +68,9 @@ def _scroll_all_docs(store: QdrantVectorStore) -> List[Document]:
 def build_bm25_retriever(store: QdrantVectorStore) -> BM25Retriever:
     """Rebuild a BM25 index in-memory from documents already in Qdrant."""
     docs = _scroll_all_docs(store)
-    retriever = BM25Retriever.from_documents(docs)
+    retriever = BM25Retriever.from_documents(
+        docs, preprocess_func=_bm25_tokenize
+    )
     retriever.k = settings.bm25_k
     return retriever
 

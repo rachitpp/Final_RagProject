@@ -26,5 +26,10 @@ def get_llm(
         vertexai=True,
         temperature=settings.llm_temperature,
         max_output_tokens=max_tokens or settings.llm_max_tokens,
+        # gemini-2.5-flash is a "thinking" model: its internal reasoning
+        # tokens are billed against max_output_tokens. Left on, verbose
+        # thinking exhausts the budget and the visible answer truncates
+        # mid-sentence. We disable it and rely on the prompt for structure.
+        thinking_budget=0,
         streaming=streaming,
     )
