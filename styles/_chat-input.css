@@ -13,8 +13,10 @@
   /* Subtle 1px hairline border + warm inner highlight so the composer
      reads as a tangible surface lifted off the canvas. */
   border: 1px solid var(--rule-strong) !important;
-  border-radius: 24px !important;
-  padding: 0.35rem 0.55rem !important;
+  border-radius: 20px !important;
+  /* Generous vertical padding makes the bar taller (Claude-style); with
+     align-items:center above, a single-line query sits centered in it. */
+  padding: 0.7rem 0.95rem !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 1px 2px rgba(0, 0, 0, 0.25),
@@ -58,11 +60,12 @@
   font-family: var(--sans) !important;
   font-size: 1rem !important;
   line-height: 1.5 !important;
-  padding: 0.35rem 0.5rem !important;
-  /* Snug single-line height (removes the extra empty space), and a firm cap:
-     a long pasted query SCROLLS inside the bar instead of growing it. */
+  padding: 0.15rem 0.55rem !important;
+  /* Keep the textarea ~one line tall so it stays vertically centered in the
+     taller bar (height comes from the container padding above). A long query
+     grows only a little, then SCROLLS inside the bar instead of ballooning. */
   min-height: 1.6rem !important;
-  max-height: 6.5rem !important;
+  max-height: 5rem !important;
   overflow-y: auto !important;
   caret-color: var(--ink);
 }
@@ -124,7 +127,7 @@
 }
 
 [data-testid="stBottomBlockContainer"] {
-  max-width: 740px !important;
+  max-width: 820px !important;
 }
 [data-testid="stBottom"]::before {
   content: "";

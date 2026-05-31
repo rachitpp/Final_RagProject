@@ -72,12 +72,12 @@
 [data-testid="stChatMessageContent"] [data-testid="stMarkdownContainer"] > p:first-child,
 [data-testid="stChatMessageContent"] > div > [data-testid="stMarkdownContainer"] > p:first-child,
 [data-testid="stChatMessageContent"] > [data-testid="stMarkdownContainer"] > p:first-child {
-  font-size: 1.13rem;
-  line-height: 1.68;
-  letter-spacing: -0.008em;
-  color: #ffffff;
+  font-size: 1.12rem;
+  line-height: 1.7;
+  letter-spacing: -0.006em;
+  color: var(--accent-strong);
   font-weight: 400;
-  margin-bottom: 0.95rem;
+  margin-bottom: 1rem;
 }
 [data-testid="stChatMessageContent"] strong {
   color: var(--ink);
