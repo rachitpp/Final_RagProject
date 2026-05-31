@@ -74,10 +74,10 @@
   flex-direction: column;
   gap: 0.3rem;
   transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    color 160ms ease,
-    transform 160ms ease;
+    border-color var(--t-hover) var(--ease),
+    background var(--t-hover) var(--ease),
+    color var(--t-hover) var(--ease),
+    transform var(--t-hover) var(--ease);
 }
 .starter:hover {
   border-color: var(--accent-border);

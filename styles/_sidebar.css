@@ -43,9 +43,9 @@
   font-size: 0.88rem;
   padding: 0.55rem 0.9rem;
   transition:
-    border-color 160ms ease,
-    background 160ms ease,
-    box-shadow 160ms ease;
+    border-color var(--t-hover) var(--ease),
+    background var(--t-hover) var(--ease),
+    box-shadow var(--t-hover) var(--ease);
   box-shadow: none;
 }
 [data-testid="stSidebar"] .stButton > button:hover {
@@ -113,12 +113,12 @@
   color: var(--ink-soft);
   line-height: 1.3;
   cursor: default;
-  transition: background 140ms ease, color 140ms ease;
+  transition: background var(--t-hover) var(--ease), color var(--t-hover) var(--ease);
 }
 .lib-ico {
   color: var(--ink-faint);
   flex: none;
-  transition: color 140ms ease;
+  transition: color var(--t-hover) var(--ease);
 }
 .lib-doc:hover {
   background: var(--paper-3);

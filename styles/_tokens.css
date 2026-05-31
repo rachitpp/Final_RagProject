@@ -32,6 +32,12 @@
   --radius-md: 12px;
   --radius-lg: 16px;
 
+  /* Shared motion — one cohesive feel across the UI.
+     --ease: smooth ease-out for hovers/UI. --ease-soft: expo-out for entrances. */
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.16, 1, 0.3, 1);
+  --t-hover: 220ms;
+
   --serif:
     "Charter", "Iowan Old Style", "Source Serif Pro", Georgia,
     "Times New Roman", serif;
