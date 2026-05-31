@@ -126,6 +126,17 @@ def _render_markdown(rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
+def _policy_for(path: str) -> str:
+    """Derive the policy tag from the filename so retrieval can isolate one
+    policy per query. 'foreign.pdf' -> 'foreign'; everything else (e.g.
+    'domestic travel.pdf') -> 'domestic'. This is the single structural fact
+    that lets the retriever — not the prompt — keep the two policies apart."""
+    name = os.path.basename(path).lower()
+    if "foreign" in name or "overseas" in name:
+        return "foreign"
+    return "domestic"
+
+
 def _load_one_pdf(path: str) -> list[Document]:
     """
     Load a single PDF, keeping narrative text and rendering tables as markdown.
@@ -186,7 +197,14 @@ def _load_one_pdf(path: str) -> list[Document]:
         if content:
             docs.append(Document(
                 page_content=content,
-                metadata={"source": os.path.basename(path), "page": page_idx},
+                metadata={
+                    "source": os.path.basename(path),
+                    # +1 so this is the 1-based human page number, not the
+                    # 0-based enumerate index. The raw index used to leak into
+                    # citations as "p.0", "p.1" (one low on every page).
+                    "page": page_idx + 1,
+                    "policy": _policy_for(path),
+                },
             ))
     logger.info(f"Loaded {len(docs)} page(s) from '{path}'")
     return docs

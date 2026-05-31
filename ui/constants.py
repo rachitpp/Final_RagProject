@@ -15,14 +15,19 @@ ASSISTANT_ACTIONS_HTML = (
     "</div>"
 )
 
+# Stages shown only while the answer is being prepared — i.e. before the
+# first streamed token. They map to work that genuinely happens in
+# stream_answer() before any text is yielded (embed the query, retrieve
+# candidates, assemble the source context). The moment the first token
+# arrives, render.py replaces this indicator with the live answer, so the
+# real streaming text — not a fake "Writing" stage — is the writing signal.
 THINKING_HTML = (
     "<div class='thinking'>"
     "<span class='thinking-glyph' aria-hidden='true'>◐</span>"
     "<span class='thinking-stages'>"
     "<span class='stage stage-1'>Embedding query</span>"
     "<span class='stage stage-2'>Retrieving passages</span>"
-    "<span class='stage stage-3'>Reranking results</span>"
-    "<span class='stage stage-4'>Writing answer</span>"
+    "<span class='stage stage-3'>Reading sources</span>"
     "</span>"
     "</div>"
 )

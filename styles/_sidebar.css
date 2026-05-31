@@ -9,6 +9,15 @@
   padding-top: 2.5rem;
   padding-bottom: 2rem;
 }
+/* Make the sidebar fill the viewport height so the footer can pin to the
+   bottom. The vertical block is already a flex column in Streamlit, so
+   margin-top:auto on its last child (the footer) pushes it down. */
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
+  min-height: calc(100vh - 4.5rem);
+}
+[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > *:last-child {
+  margin-top: auto;
+}
 
 .sidebar-brand {
   font-family: var(--serif);
@@ -18,16 +27,16 @@
   color: var(--ink);
   margin-bottom: 0.4rem;
 }
+.sidebar-brand .brand-mark {
+  color: var(--accent);
+  font-weight: 400;
+  margin-right: 0.1rem;
+}
 .sidebar-sub {
   font-size: 0.82rem;
   color: var(--ink-muted);
   line-height: 1.55;
   margin-bottom: 1.5rem;
-}
-.sidebar-rule {
-  height: 1px;
-  background: var(--rule);
-  margin: 0.25rem 0 1.25rem;
 }
 
 [data-testid="stSidebar"] .stButton > button {
@@ -111,15 +120,17 @@
   cursor: default;
   transition: background 140ms ease, color 140ms ease;
 }
-.lib-doc::before {
-  content: "▭";
+.lib-ico {
   color: var(--ink-faint);
-  font-size: 0.8em;
   flex: none;
+  transition: color 140ms ease;
 }
 .lib-doc:hover {
   background: var(--paper-3);
   color: var(--ink);
+}
+.lib-doc:hover .lib-ico {
+  color: var(--accent);
 }
 .lib-name {
   flex: 1;
@@ -131,9 +142,17 @@
 .lib-meta {
   flex: none;
   font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.66rem;
-  color: var(--ink-faint);
+  font-size: 0.62rem;
+  color: var(--ink-muted);
   letter-spacing: 0.01em;
+  background: var(--paper-3);
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  padding: 0.05rem 0.4rem;
+  line-height: 1.4;
+}
+.lib-doc:hover .lib-meta {
+  border-color: var(--rule-strong);
 }
 .lib-more {
   font-family: var(--sans);
@@ -155,4 +174,40 @@
   padding: 0.05rem 0.3rem;
   border-radius: 4px;
   font-size: 0.85em;
+}
+
+/* ============================================================
+   FOOTER — pinned to the bottom (margin-top:auto on the last
+   sidebar block). A calm status dot + the live model name anchor
+   the composition so the column reads as finished, not trailing
+   off into empty space.
+   ============================================================ */
+.sidebar-footer {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding-top: 1rem;
+  margin-top: 1.5rem;
+  border-top: 1px solid var(--rule);
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  color: var(--ink-faint);
+  letter-spacing: 0.01em;
+}
+.sidebar-footer .footer-model {
+  color: var(--ink-muted);
+}
+.status-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #8aa678;            /* calm sage green — "ready" */
+  box-shadow: 0 0 0 0 rgba(138, 166, 120, 0.5);
+  animation: status-pulse 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+@keyframes status-pulse {
+  0%   { box-shadow: 0 0 0 0 rgba(138, 166, 120, 0.45); }
+  70%  { box-shadow: 0 0 0 5px rgba(138, 166, 120, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(138, 166, 120, 0); }
 }

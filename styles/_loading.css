@@ -125,6 +125,10 @@
   font-size: 0.9rem;
   letter-spacing: 0.01em;
 }
+/* The three stages rotate continuously while the answer is being
+   prepared — the indicator is removed the instant the first token
+   streams in, so there is no fixed end-state to hold on. A 4.2s loop
+   with 1.4s offsets keeps exactly one phase visible at a time. */
 .thinking-stages .stage {
   position: absolute;
   left: 0;
@@ -132,24 +136,17 @@
   white-space: nowrap;
   opacity: 0;
   color: var(--ink-soft);
-  animation: stage-cycle 4.6s cubic-bezier(0.4, 0, 0.2, 1) forwards;
+  animation: stage-cycle 4.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
 }
 .thinking-stages .stage-1 { animation-delay: 0s; }
-.thinking-stages .stage-2 { animation-delay: 1.35s; }
-.thinking-stages .stage-3 { animation-delay: 2.7s; }
-.thinking-stages .stage-4 {
-  animation: stage-hold 0.7s cubic-bezier(0.4, 0, 0.2, 1) 4.05s forwards;
-}
+.thinking-stages .stage-2 { animation-delay: 1.4s; }
+.thinking-stages .stage-3 { animation-delay: 2.8s; }
 @keyframes stage-cycle {
   0%   { opacity: 0; transform: translateY(4px); }
-  7%   { opacity: 1; transform: translateY(0); }
-  22%  { opacity: 1; transform: translateY(0); }
-  29%  { opacity: 0; transform: translateY(-4px); }
+  5%   { opacity: 1; transform: translateY(0); }
+  28%  { opacity: 1; transform: translateY(0); }
+  33%  { opacity: 0; transform: translateY(-4px); }
   100% { opacity: 0; }
-}
-@keyframes stage-hold {
-  from { opacity: 0; transform: translateY(4px); }
-  to   { opacity: 1; transform: translateY(0); }
 }
 
 /* ============================================================

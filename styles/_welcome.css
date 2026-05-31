@@ -48,8 +48,9 @@
 
 /* ============================================================
    STARTER PROMPTS — four tappable cards under the welcome
-   subtitle. Clicking one populates the chat input via the script
-   handler so the user can edit before sending.
+   subtitle. Clicking one fills the chat input (via the starter
+   click handler in client_behaviors.py) so the user can edit
+   before sending.
    ============================================================ */
 .starter-grid {
   display: grid;
@@ -79,7 +80,7 @@
     transform 160ms ease;
 }
 .starter:hover {
-  border-color: #5a5a5a;
+  border-color: var(--accent-border);
   background: var(--paper-3);
   color: var(--ink);
   transform: translateY(-1px);
@@ -87,15 +88,15 @@
 .starter:active { transform: translateY(0); }
 .starter:focus-visible {
   outline: none;
-  border-color: var(--ink-muted);
+  border-color: var(--accent);
   box-shadow: 0 0 0 3px var(--focus-halo);
 }
 .starter .ico {
   color: var(--ink-faint);
   font-family: "SF Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
-  font-size: 0.7rem;
-  letter-spacing: 0.04em;
-  text-transform: lowercase;
+  font-size: 0.68rem;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 .starter .copy {
   display: block;

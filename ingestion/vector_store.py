@@ -3,7 +3,7 @@ from langchain_qdrant import QdrantVectorStore
 from langchain_core.documents import Document
 from langsmith import traceable
 from qdrant_client import QdrantClient
-from qdrant_client.http.models import Distance, VectorParams
+from qdrant_client.http.models import Distance, PayloadSchemaType, VectorParams
 
 from config.settings import settings
 from llm.models import get_embedding_model
@@ -45,6 +45,17 @@ def _ensure_collection(client: QdrantClient) -> None:
         f"Created Qdrant collection '{settings.qdrant_collection}' "
         f"(size={settings.qdrant_vector_size}, distance=cosine)"
     )
+    # Index the policy field so retrieval can filter on it. Qdrant Cloud often
+    # runs in strict mode, which REJECTS filtering on an unindexed field with an
+    # UnexpectedResponse — so this index is what makes the policy filter work,
+    # not just a performance nicety. The key is nested because QdrantVectorStore
+    # stores metadata under the 'metadata' payload key.
+    client.create_payload_index(
+        collection_name=settings.qdrant_collection,
+        field_name="metadata.policy",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
+    logger.info("Created payload index on 'metadata.policy' (keyword)")
 
 
 @traceable(name="create_vector_store")

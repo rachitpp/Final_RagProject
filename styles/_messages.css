@@ -90,7 +90,114 @@
   font-size: 0.92em;
 }
 
-/* Citation chips — near-monochrome, subtle blue-gray tint */
+/* ============================================================
+   Tables — the corpus is rate matrices + classification tables,
+   so answers lean on markdown tables heavily. Style them as a
+   first-class element: hairline grid, raised header, hover rows,
+   and tabular figures so numeric columns align.
+   ============================================================ */
+[data-testid="stChatMessageContent"] table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 1.1rem 0;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  display: block;
+  overflow-x: auto;            /* keep wide rate matrices scrollable on mobile */
+  border: 1px solid var(--rule-strong);
+  border-radius: var(--radius-sm);
+}
+[data-testid="stChatMessageContent"] thead th {
+  background: var(--paper-4);
+  color: var(--ink);
+  font-weight: 600;
+  text-align: left;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+[data-testid="stChatMessageContent"] th,
+[data-testid="stChatMessageContent"] td {
+  padding: 0.5rem 0.8rem;
+  border-bottom: 1px solid var(--rule);
+  border-right: 1px solid var(--rule);
+  color: var(--ink-soft);
+  vertical-align: top;
+}
+[data-testid="stChatMessageContent"] th:last-child,
+[data-testid="stChatMessageContent"] td:last-child {
+  border-right: none;
+}
+[data-testid="stChatMessageContent"] tbody tr:last-child td {
+  border-bottom: none;
+}
+[data-testid="stChatMessageContent"] tbody tr {
+  transition: background 120ms ease;
+}
+[data-testid="stChatMessageContent"] tbody tr:hover {
+  background: var(--paper-3);
+}
+
+/* ============================================================
+   Lists, headings, blockquotes — answers aren't pure prose; give
+   the structural elements the same typeset treatment as body copy
+   so a bulleted or sectioned answer still reads as designed.
+   ============================================================ */
+[data-testid="stChatMessageContent"] ul,
+[data-testid="stChatMessageContent"] ol {
+  margin: 0.4rem 0 0.95rem;
+  padding-left: 1.4rem;
+}
+[data-testid="stChatMessageContent"] li {
+  margin-bottom: 0.4rem;
+  line-height: 1.7;
+  padding-left: 0.2rem;
+}
+[data-testid="stChatMessageContent"] ul li::marker {
+  color: var(--ink-faint);
+}
+[data-testid="stChatMessageContent"] ol li::marker {
+  color: var(--ink-faint);
+  font-family: var(--sans);
+  font-size: 0.9em;
+}
+[data-testid="stChatMessageContent"] li > ul,
+[data-testid="stChatMessageContent"] li > ol {
+  margin: 0.35rem 0 0.35rem;
+}
+[data-testid="stChatMessageContent"] h2,
+[data-testid="stChatMessageContent"] h3,
+[data-testid="stChatMessageContent"] h4 {
+  font-family: var(--sans);
+  color: var(--ink);
+  letter-spacing: 0.01em;
+  line-height: 1.3;
+  margin: 1.4rem 0 0.6rem;
+}
+[data-testid="stChatMessageContent"] h2 { font-size: 1.12rem; font-weight: 600; }
+[data-testid="stChatMessageContent"] h3 { font-size: 1.0rem; font-weight: 600; }
+[data-testid="stChatMessageContent"] h4 {
+  font-size: 0.78rem;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.1em;
+  color: var(--ink-muted);
+}
+[data-testid="stChatMessageContent"] blockquote {
+  margin: 1rem 0;
+  padding: 0.3rem 0 0.3rem 1rem;
+  border-left: 2px solid var(--accent-border);
+  color: var(--ink-muted);
+  font-style: italic;
+}
+[data-testid="stChatMessageContent"] hr {
+  border: none;
+  border-top: 1px solid var(--rule);
+  margin: 1.4rem 0;
+}
+
+/* Citation chips — warm parchment-gold tint */
 [data-testid="stChatMessageContent"] .cite {
   display: inline-block;
   font-family:

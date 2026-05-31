@@ -1,31 +1,32 @@
 /* ============================================================
-   Tokens — Midnight v2 palette
-   Cool neutral grays, near-monochrome. ChatGPT-style dark mode
-   with our serif typography and ◐ brand mark preserved.
+   Tokens — Ink & Parchment palette
+   Warm near-black canvas + warm off-white ink, leaning into the
+   serif/editorial identity instead of ChatGPT's cool gray. A single
+   muted-ochre accent (parchment gold) carries citations and links.
    ============================================================ */
 :root {
-  --ink: #ececec;            /* primary text — near-white, neutral */
-  --ink-soft: #d1d1d1;       /* secondary */
-  --ink-muted: #b4b4b4;      /* tertiary / helper */
-  --ink-faint: #8e8e8e;      /* placeholder, eyebrow */
+  --ink: #efe9e1;            /* primary text — warm off-white */
+  --ink-soft: #d7cfc3;       /* secondary */
+  --ink-muted: #b3aa9c;      /* tertiary / helper */
+  --ink-faint: #8b8273;      /* placeholder, eyebrow */
 
-  --paper: #212121;          /* main canvas */
-  --paper-2: #171717;        /* sidebar — slightly darker */
-  --paper-3: #2a2a2a;        /* hover */
-  --paper-4: #2f2f2f;        /* raised surfaces — user bubble, composer */
-  --paper-5: #404040;        /* hover on raised */
+  --paper: #1c1b18;          /* main canvas — warm near-black */
+  --paper-2: #151412;        /* sidebar — slightly darker */
+  --paper-3: #262420;        /* hover */
+  --paper-4: #2c2a25;        /* raised surfaces — user bubble, composer */
+  --paper-5: #3a372f;        /* hover on raised */
 
-  --rule: #2a2a2a;           /* hairlines */
-  --rule-strong: #3a3a3a;
+  --rule: #2a2824;           /* hairlines */
+  --rule-strong: #3a372f;
 
-  /* Near-monochrome — barely-blue tint for citations only. Almost neutral. */
-  --accent: #c2d1dd;
-  --accent-strong: #ffffff;
-  --accent-bg: rgba(194, 209, 221, 0.08);
-  --accent-border: rgba(194, 209, 221, 0.22);
+  /* Muted ochre — parchment gold. Warm, restrained; citations + links only. */
+  --accent: #d3b98c;
+  --accent-strong: #f3e6cf;
+  --accent-bg: rgba(211, 185, 140, 0.09);
+  --accent-border: rgba(211, 185, 140, 0.26);
 
-  --focus: #ffffff;
-  --focus-halo: rgba(255, 255, 255, 0.15);
+  --focus: #f3e6cf;
+  --focus-halo: rgba(211, 185, 140, 0.20);
 
   --radius-sm: 8px;
   --radius-md: 12px;

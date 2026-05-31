@@ -15,14 +15,33 @@ logger = logging.getLogger(__name__)
 _STREAM_REPAINT_INTERVAL = 0.05
 
 
+# Example questions for the empty state. Clicking a card fills the chat
+# input (handled in client_behaviors.py) so the user can edit before sending.
+# Phrased without apostrophes so they sit cleanly in the data-q attribute.
+_STARTER_PROMPTS = [
+    ("rates", "What is the DA rate for a Category A city?"),
+    ("cities", "How are cities classified into categories?"),
+    ("lodging", "What are the lodging limits for each band?"),
+    ("travel", "Which mode of travel is allowed for each grade?"),
+]
+
+
 def render_empty_state() -> None:
+    cards = "".join(
+        f"<button class='starter' type='button' data-q=\"{html.escape(q, quote=True)}\">"
+        f"<span class='ico'>{label}</span>"
+        f"<span class='copy'>{html.escape(q)}</span>"
+        f"</button>"
+        for label, q in _STARTER_PROMPTS
+    )
     st.markdown(
         "<div class='welcome-wrap'>"
         "<div class='eyebrow'>Ready when you are</div>"
         "<div class='welcome-title'>What would you like to know?</div>"
         "<div class='welcome-sub'>"
-        "Ask anything about your documents."
+        "Ask anything about your documents — or start with one of these."
         "</div>"
+        f"<div class='starter-grid'>{cards}</div>"
         "</div>",
         unsafe_allow_html=True,
     )

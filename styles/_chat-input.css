@@ -133,7 +133,7 @@
   background: linear-gradient(
     to top,
     var(--paper) 20%,
-    rgba(33, 33, 33, 0) 100%
+    rgba(28, 27, 24, 0) 100%
   );
   pointer-events: none;
 }

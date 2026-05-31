@@ -31,7 +31,7 @@ html,
   background: linear-gradient(
     to bottom,
     var(--paper) 30%,
-    rgba(33, 33, 33, 0) 100%
+    rgba(28, 27, 24, 0) 100%
   );
   pointer-events: none;
   z-index: 5;

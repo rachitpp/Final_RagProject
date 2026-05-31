@@ -3,10 +3,27 @@ import logging
 
 import streamlit as st
 
+from config.settings import settings
 from pipelines.rag_pipeline import RAGPipeline
 from ui.session import reset_conversation
 
 logger = logging.getLogger(__name__)
+
+# Document glyph for Library rows — a page with a folded corner. Inline SVG
+# (matching the copy/jump icons) instead of a unicode box placeholder.
+_DOC_ICON = (
+    "<svg class='lib-ico' viewBox='0 0 24 24' width='13' height='13' "
+    "fill='none' stroke='currentColor' stroke-width='1.8' "
+    "stroke-linecap='round' stroke-linejoin='round' aria-hidden='true'>"
+    "<path d='M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8z'></path>"
+    "<path d='M14 3v5h5'></path>"
+    "</svg>"
+)
+
+
+def _model_display_name() -> str:
+    """Human-readable label for the configured LLM (e.g. 'Gemini 2.5 Flash')."""
+    return settings.llm_model.replace("-", " ").title()
 
 
 def _list_indexed_documents(pipeline: RAGPipeline) -> "tuple[list[dict], int]":
@@ -48,14 +65,15 @@ def _list_indexed_documents(pipeline: RAGPipeline) -> "tuple[list[dict], int]":
 def render_sidebar(pipeline: RAGPipeline) -> None:
     with st.sidebar:
         st.markdown(
-            "<div class='sidebar-brand'>RAG Assistant</div>"
+            "<div class='sidebar-brand'>"
+            "<span class='brand-mark' aria-hidden='true'>◐</span> RAG Assistant"
+            "</div>"
             "<div class='sidebar-sub'>"
             "Ask questions across your indexed documents."
-            "</div>"
-            "<div class='sidebar-rule'></div>",
+            "</div>",
             unsafe_allow_html=True,
         )
-        if st.button("New chat", use_container_width=True, type="secondary"):
+        if st.button("＋  New chat", use_container_width=True, type="secondary"):
             reset_conversation(pipeline)
             st.rerun()
 
@@ -75,6 +93,7 @@ def render_sidebar(pipeline: RAGPipeline) -> None:
                 )
                 items_html.append(
                     f"<li class='lib-doc' title='{safe_name}'>"
+                    f"{_DOC_ICON}"
                     f"<span class='lib-name'>{safe_name}</span>{meta_html}</li>"
                 )
             overflow_html = (
@@ -106,3 +125,15 @@ def render_sidebar(pipeline: RAGPipeline) -> None:
                 "</div>",
                 unsafe_allow_html=True,
             )
+
+        # Footer — pinned to the bottom of the sidebar (see _sidebar.css).
+        # Anchors the composition and shows what's powering the assistant.
+        st.markdown(
+            "<div class='sidebar-footer'>"
+            "<span class='status-dot' aria-hidden='true'></span>"
+            "<span class='footer-text'>Ready · "
+            f"<span class='footer-model'>{html.escape(_model_display_name())}</span>"
+            "</span>"
+            "</div>",
+            unsafe_allow_html=True,
+        )

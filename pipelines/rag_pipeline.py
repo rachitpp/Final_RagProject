@@ -4,11 +4,12 @@ from langsmith import traceable
 from ingestion.vector_store import load_vector_store
 from retrieval.retrievers import (
     build_bm25_retriever,
-    build_vector_retriever,
+    build_bm25_by_policy,
     hybrid_retrieve,
     _scroll_all_docs,
 )
-from retrieval.pinned import collect_pinned
+from retrieval.pinned import resolve_pinned, select_pinned
+from retrieval.classify import classify_trip_type
 from retrieval.formatter import format_docs
 from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
@@ -21,59 +22,87 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+def _trip_label(trip_type: str, assumed: bool) -> str:
+    """Human-readable trip-type string fed to the answer prompt's grounding.
+    When the policy was assumed (ambiguous destination), the label tells the
+    model to surface that assumption to the user."""
+    base = (
+        "Foreign (overseas travel)"
+        if trip_type == "foreign"
+        else "Domestic (travel within India)"
+    )
+    if assumed:
+        return (
+            base + " — ASSUMED, because no overseas destination was indicated"
+        )
+    return base
+
+
 class RAGPipeline:
     """
     End-to-end retrieval pipeline. One class, built once, reused.
-    Holds the heavy objects (vector store, BM25 index, LLM, memory).
-    Everything else is a plain function.
+    Holds the heavy objects (vector store, BM25 indexes, LLM, memory).
 
-    Flow: rewrite -> BM25 + vector (union, dedup) -> pin reference tables -> LLM.
+    Flow: rewrite -> classify policy -> policy-scoped BM25 + vector (union,
+    dedup) -> pin reference tables (both classifications + active rate) -> LLM.
+
+    Policy isolation is owned by RETRIEVAL, not the prompt: the trip type is
+    decided once (classify_trip_type) and that single decision drives the body
+    filter, which rate table is pinned, and the prompt's grounding line — so
+    they can never disagree.
     """
 
     def __init__(self) -> None:
         store = load_vector_store()
+        self.store = store
+        # Combined index — used by the sidebar's Library view (lists all docs).
         self.bm25 = build_bm25_retriever(store)
-        self.vector = build_vector_retriever(store)
+        # Per-policy indexes — used for policy-scoped keyword retrieval.
+        self.bm25_by_policy = build_bm25_by_policy(store)
         self.llm = get_llm(streaming=True)
         self.memory = ConversationMemory(max_turns=settings.history_window)
-        # Reference lookup tables (city/country classification, rate matrices)
-        # are resolved ONCE at startup and injected into every query's context,
-        # so retrieval — not the prompt — guarantees the category/rate data is
-        # present. See retrieval/pinned.py.
-        self.pinned = collect_pinned(_scroll_all_docs(store))
+        # Reference tables resolved ONCE at startup. select_pinned() then picks
+        # the right subset per query based on trip type. See retrieval/pinned.py.
+        self.pinned = resolve_pinned(_scroll_all_docs(store))
         logger.info("RAG pipeline initialized.")
 
-    def _merge_pinned(self, kept: list) -> list:
-        """Prepend the pinned reference tables, deduped against the reranked docs."""
-        seen = {d.page_content for d in self.pinned}
-        return self.pinned + [d for d in kept if d.page_content not in seen]
-
+    def _merge_pinned(self, kept: list, trip_type: str) -> list:
+        """Prepend the pinned reference tables for this trip type, deduped
+        against the retrieved docs."""
+        pinned = select_pinned(self.pinned, trip_type)
+        seen = {d.page_content for d in pinned}
+        return pinned + [d for d in kept if d.page_content not in seen]
 
     @traceable(
         name="rag_pipeline.retrieve",
-        metadata={"retriever": "bm25+vector-similarity+pinned-tables"},
+        metadata={"retriever": "classify+bm25+vector-similarity+pinned-tables"},
     )
-    def _retrieve(self, query: str) -> tuple[list, str]:
-        """Rewrite → hybrid retrieve → pin reference tables. Returns (context_docs, rewritten_query)."""
+    def _retrieve(self, query: str) -> tuple[list, str, str, bool]:
+        """Rewrite → classify policy → policy-scoped hybrid retrieve → pin
+        reference tables. Returns (context_docs, rewritten_query, trip_type,
+        assumed)."""
         rewritten = rewrite_query(query, self.memory.turns())
+        trip_type, assumed = classify_trip_type(rewritten)
         vector_query = generate_hyde(rewritten) if settings.hyde_enabled else rewritten
         candidates = hybrid_retrieve(
             bm25_query=rewritten,
             vector_query=vector_query,
-            bm25_retriever=self.bm25,
-            vector_retriever=self.vector,
+            store=self.store,
+            bm25_by_policy=self.bm25_by_policy,
+            policy=trip_type,
         )
-        # Guarantee the reference tables are present regardless of how the
-        # retrievers ranked them.
-        return self._merge_pinned(candidates), rewritten
+        # Guarantee the reference tables are present regardless of ranking.
+        return self._merge_pinned(candidates, trip_type), rewritten, trip_type, assumed
 
     def stream_answer(self, query: str) -> Iterator[str]:
         """Run the full pipeline and yield the answer token-by-token."""
-        context_docs, rewritten = self._retrieve(query)
+        context_docs, rewritten, trip_type, assumed = self._retrieve(query)
 
         context = format_docs(context_docs)
         messages = ANSWER_PROMPT.format_messages(
-            context=context, question=rewritten
+            context=context,
+            question=rewritten,
+            trip_type=_trip_label(trip_type, assumed),
         )
 
         collected: list[str] = []

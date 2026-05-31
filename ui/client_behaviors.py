@@ -59,7 +59,7 @@ def install_client_behaviors() -> None:
         (function () {
           const doc = window.parent.document;
           const win = window.parent;
-          const VERSION = 8;
+          const VERSION = 9;
           if (doc.__ragClientVersion === VERSION) return;
           doc.__ragClientVersion = VERSION;
           try { console.log('[RAG] client behaviors installing v' + VERSION); } catch (e) {}
@@ -398,6 +398,34 @@ def install_client_behaviors() -> None:
             if (ta) { ta.focus(); }
             else if (n > 0) { setTimeout(function () { focusOnce(n - 1); }, 150); }
           })(20);
+
+          /* ---- starter prompts: fill the composer on click ----
+             The chat input is a React-controlled textarea, so a plain
+             `ta.value = q` is overwritten on the next render. We set the
+             value through the native prototype setter and dispatch an
+             'input' event so React's state updates and the send button
+             enables — then focus so the user can edit before sending. */
+          function setNativeValue(el, value) {
+            const proto = win.HTMLTextAreaElement && win.HTMLTextAreaElement.prototype;
+            const desc = proto && Object.getOwnPropertyDescriptor(proto, 'value');
+            if (desc && desc.set) { desc.set.call(el, value); }
+            else { el.value = value; }
+            el.dispatchEvent(new win.Event('input', { bubbles: true }));
+          }
+          doc.addEventListener('click', function (e) {
+            const card = e.target.closest && e.target.closest('.starter');
+            if (!card) return;
+            const q = card.getAttribute('data-q');
+            if (q == null) return;
+            const ta = doc.querySelector('[data-testid="stChatInput"] textarea');
+            if (!ta) return;
+            setNativeValue(ta, q);
+            ta.focus();
+            try {
+              const len = ta.value.length;
+              ta.setSelectionRange(len, len);
+            } catch (err) {}
+          }, true);
 
           placeJump();
           if (!holdActive()) toBottomAll();
