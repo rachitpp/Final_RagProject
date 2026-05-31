@@ -57,9 +57,13 @@ def install_client_behaviors() -> None:
         """
         <script>
         (function () {
-          const doc = window.parent.document;
-          const win = window.parent;
-          const VERSION = 9;
+          let doc, win;
+          try { win = window.parent; doc = window.parent.document; }
+          catch (e) {
+            try { console.error('[RAG] cannot reach parent document', e); } catch (_) {}
+            return;
+          }
+          const VERSION = 10;
           if (doc.__ragClientVersion === VERSION) return;
           doc.__ragClientVersion = VERSION;
           try { console.log('[RAG] client behaviors installing v' + VERSION); } catch (e) {}
@@ -188,6 +192,15 @@ def install_client_behaviors() -> None:
             pinned = true;
             win.__ragHoldUntil = 0;
             toBottomAll();
+            // Version-proof fallback: pull the last message into view directly,
+            // in case the scroll-container testids changed.
+            try {
+              const last = doc.querySelector('[data-testid="stChatMessage"]:last-of-type')
+                        || doc.querySelector('.user-row:last-of-type');
+              if (last && last.scrollIntoView) {
+                last.scrollIntoView({ block: 'end', behavior: 'smooth' });
+              }
+            } catch (e) {}
             updateJump();
           });
 
@@ -312,6 +325,34 @@ def install_client_behaviors() -> None:
           };
 
           /* ---- copy button ---- */
+          function legacyCopy(text, onOk) {
+            // execCommand path — works during a user gesture even when the
+            // async clipboard API is blocked by the iframe's permissions policy.
+            try {
+              const ta = doc.createElement('textarea');
+              ta.value = text;
+              ta.style.position = 'fixed';
+              ta.style.top = '0';
+              ta.style.left = '0';
+              ta.style.opacity = '0';
+              doc.body.appendChild(ta);
+              ta.focus();
+              ta.select();
+              const ok = doc.execCommand('copy');
+              doc.body.removeChild(ta);
+              if (ok) onOk();
+            } catch (err) {}
+          }
+          function copyText(text, onOk) {
+            if (win.navigator.clipboard && win.navigator.clipboard.writeText) {
+              // On reject (common in component iframes) fall back to execCommand.
+              win.navigator.clipboard.writeText(text).then(onOk).catch(function () {
+                legacyCopy(text, onOk);
+              });
+            } else {
+              legacyCopy(text, onOk);
+            }
+          }
           doc.addEventListener('click', function (e) {
             const btn = e.target.closest && e.target.closest('.copy-btn');
             if (!btn) return;
@@ -321,7 +362,8 @@ def install_client_behaviors() -> None:
             const clone = content.cloneNode(true);
             clone.querySelectorAll('.msg-actions').forEach(function (n) { n.remove(); });
             const text = (clone.innerText || '').trim();
-            function flash() {
+            if (!text) return;
+            copyText(text, function () {
               btn.classList.add('copied');
               const label = btn.querySelector('.copy-label');
               const prev = label ? label.textContent : '';
@@ -330,19 +372,7 @@ def install_client_behaviors() -> None:
                 btn.classList.remove('copied');
                 if (label) label.textContent = prev || 'Copy';
               }, 1400);
-            }
-            if (win.navigator.clipboard && win.navigator.clipboard.writeText) {
-              win.navigator.clipboard.writeText(text).then(flash).catch(function () {});
-            } else {
-              const ta = doc.createElement('textarea');
-              ta.value = text;
-              ta.style.position = 'fixed';
-              ta.style.opacity = '0';
-              doc.body.appendChild(ta);
-              ta.select();
-              try { doc.execCommand('copy'); flash(); } catch (err) {}
-              doc.body.removeChild(ta);
-            }
+            });
           }, true);
 
           /* ---- sources toggle ---- */
@@ -421,10 +451,16 @@ def install_client_behaviors() -> None:
             if (!ta) return;
             setNativeValue(ta, q);
             ta.focus();
-            try {
-              const len = ta.value.length;
-              ta.setSelectionRange(len, len);
-            } catch (err) {}
+            try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (err) {}
+            // Submit it: after React registers the value (enabling the send
+            // button), click Send. Try a couple of times in case it's a tick
+            // behind. Falls back to leaving the text in the box to edit/send.
+            let tries = 0;
+            (function submit() {
+              const send = doc.querySelector('[data-testid="stChatInput"] button');
+              if (send && !send.disabled) { send.click(); return; }
+              if (tries++ < 8) setTimeout(submit, 60);
+            })();
           }, true);
 
           placeJump();

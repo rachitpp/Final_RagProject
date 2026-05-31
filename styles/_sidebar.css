@@ -9,15 +9,10 @@
   padding-top: 2.5rem;
   padding-bottom: 2rem;
 }
-/* Make the sidebar fill the viewport height so the footer can pin to the
-   bottom. The vertical block is already a flex column in Streamlit, so
-   margin-top:auto on its last child (the footer) pushes it down. */
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"] {
-  min-height: calc(100vh - 4.5rem);
-}
-[data-testid="stSidebar"] [data-testid="stVerticalBlock"] > *:last-child {
-  margin-top: auto;
-}
+/* Footer sits directly after the Library content. (A previous min-height:100vh
+   pin overflowed the sidebar and pushed the footer below the fold, forcing a
+   scroll — so the content simply flows naturally now and the footer is always
+   visible without scrolling.) */
 
 .sidebar-brand {
   font-family: var(--serif);
