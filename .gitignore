@@ -20,6 +20,7 @@ dist/
 # Secrets and credentials
 .env
 *.json
+.streamlit/secrets.toml
 
 # Vector database storage
 qdrant_data/

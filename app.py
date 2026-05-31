@@ -13,6 +13,11 @@ load_dotenv(Path(__file__).parent / ".env")
 
 import streamlit as st
 
+# On Streamlit Cloud there is no .env / key file — pull creds from st.secrets.
+# No-op locally (the .env above already set everything).
+from ui.cloud_secrets import bootstrap_secrets
+bootstrap_secrets()
+
 logging.basicConfig(
     level=logging.INFO,
     format="%(asctime)s  %(levelname)-7s  %(name)s  %(message)s",
