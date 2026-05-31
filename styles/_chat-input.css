@@ -14,9 +14,9 @@
      reads as a tangible surface lifted off the canvas. */
   border: 1px solid var(--rule-strong) !important;
   border-radius: 20px !important;
-  /* Generous vertical padding makes the bar taller (Claude-style); with
-     align-items:center above, a single-line query sits centered in it. */
-  padding: 0.7rem 0.95rem !important;
+  /* The textarea has a FIXED height (below) that sets the bar's size; this
+     padding is just the inner gutter. align-items:center keeps it centered. */
+  padding: 0.3rem 0.9rem !important;
   box-shadow:
     inset 0 1px 0 rgba(255, 255, 255, 0.04),
     0 1px 2px rgba(0, 0, 0, 0.25),
@@ -59,13 +59,14 @@
   color: var(--ink) !important;
   font-family: var(--sans) !important;
   font-size: 1rem !important;
-  line-height: 1.5 !important;
-  padding: 0.15rem 0.55rem !important;
-  /* Keep the textarea ~one line tall so it stays vertically centered in the
-     taller bar (height comes from the container padding above). A long query
-     grows only a little, then SCROLLS inside the bar instead of ballooning. */
-  min-height: 1.6rem !important;
-  max-height: 5rem !important;
+  line-height: 1.4 !important;
+  /* FIXED height — the bar NEVER resizes, no matter how long the query is.
+     The padding is tuned so a single-line query sits vertically centered;
+     a longer query SCROLLS inside this fixed box instead of growing it. */
+  height: 2.9rem !important;
+  min-height: 2.9rem !important;
+  max-height: 2.9rem !important;
+  padding: 0.75rem 0.6rem !important;
   overflow-y: auto !important;
   caret-color: var(--ink);
 }
