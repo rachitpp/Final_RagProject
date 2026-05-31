@@ -63,7 +63,7 @@ def install_client_behaviors() -> None:
             try { console.error('[RAG] cannot reach parent document', e); } catch (_) {}
             return;
           }
-          const VERSION = 10;
+          const VERSION = 11;
           if (doc.__ragClientVersion === VERSION) return;
           doc.__ragClientVersion = VERSION;
           try { console.log('[RAG] client behaviors installing v' + VERSION); } catch (e) {}
@@ -182,7 +182,7 @@ def install_client_behaviors() -> None:
             if (pill) {
               const r = pill.getBoundingClientRect();
               jump.style.left = (r.left + r.width / 2) + 'px';
-              jump.style.bottom = (win.innerHeight - r.top + 10) + 'px';
+              jump.style.bottom = (win.innerHeight - r.top + 22) + 'px';
             } else {
               jump.style.left = '50%';
               jump.style.bottom = '110px';

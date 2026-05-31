@@ -58,9 +58,12 @@
   font-family: var(--sans) !important;
   font-size: 1rem !important;
   line-height: 1.5 !important;
-  padding: 0.5rem 0.5rem !important;
-  min-height: 2.5rem !important;
-  max-height: 9rem !important;
+  padding: 0.35rem 0.5rem !important;
+  /* Snug single-line height (removes the extra empty space), and a firm cap:
+     a long pasted query SCROLLS inside the bar instead of growing it. */
+  min-height: 1.6rem !important;
+  max-height: 6.5rem !important;
+  overflow-y: auto !important;
   caret-color: var(--ink);
 }
 [data-testid="stChatInput"] textarea::placeholder {
