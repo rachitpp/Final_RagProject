@@ -15,7 +15,7 @@ def main() -> None:
 
     print("=" * 64)
     print("RAG System Ready")
-    print("Flow: Rewrite -> HYDE -> Hybrid (BM25+Vector MMR) -> Rerank+Filter -> Gemini")
+    print("Flow: Rewrite -> Hybrid (BM25 + Vector) -> Pin reference tables -> Gemini")
     print("Commands: '0' to exit, 'reset' to clear conversation memory")
     print("=" * 64)
 

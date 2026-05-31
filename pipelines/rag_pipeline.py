@@ -6,8 +6,9 @@ from retrieval.retrievers import (
     build_bm25_retriever,
     build_vector_retriever,
     hybrid_retrieve,
+    _scroll_all_docs,
 )
-from retrieval.reranker import build_cross_encoder, rerank_and_filter
+from retrieval.pinned import collect_pinned
 from retrieval.formatter import format_docs
 from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
@@ -19,59 +20,58 @@ from utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-NO_CONTEXT_FALLBACK = (
-    "I could not find anything in the documents that confidently answers "
-    "this question. Try rephrasing or asking something more specific."
-)
-
 
 class RAGPipeline:
     """
     End-to-end retrieval pipeline. One class, built once, reused.
-    Holds the heavy objects (vector store, BM25 index, cross-encoder,
-    LLM, memory). Everything else is a plain function.
+    Holds the heavy objects (vector store, BM25 index, LLM, memory).
+    Everything else is a plain function.
+
+    Flow: rewrite -> BM25 + vector (union, dedup) -> pin reference tables -> LLM.
     """
 
     def __init__(self) -> None:
         store = load_vector_store()
         self.bm25 = build_bm25_retriever(store)
         self.vector = build_vector_retriever(store)
-        self.cross_encoder = build_cross_encoder()
         self.llm = get_llm(streaming=True)
         self.memory = ConversationMemory(max_turns=settings.history_window)
+        # Reference lookup tables (city/country classification, rate matrices)
+        # are resolved ONCE at startup and injected into every query's context,
+        # so retrieval — not the prompt — guarantees the category/rate data is
+        # present. See retrieval/pinned.py.
+        self.pinned = collect_pinned(_scroll_all_docs(store))
         logger.info("RAG pipeline initialized.")
+
+    def _merge_pinned(self, kept: list) -> list:
+        """Prepend the pinned reference tables, deduped against the reranked docs."""
+        seen = {d.page_content for d in self.pinned}
+        return self.pinned + [d for d in kept if d.page_content not in seen]
 
 
     @traceable(
         name="rag_pipeline.retrieve",
-        metadata={
-            "retriever": "hyde+bm25+vector-mmr",
-            "rerank": "ms-marco-MiniLM-L-6-v2",
-        },
+        metadata={"retriever": "bm25+vector-similarity+pinned-tables"},
     )
     def _retrieve(self, query: str) -> tuple[list, str]:
-        """Rewrite → HYDE → hybrid retrieve → rerank. Returns (kept_docs, rewritten_query)."""
+        """Rewrite → hybrid retrieve → pin reference tables. Returns (context_docs, rewritten_query)."""
         rewritten = rewrite_query(query, self.memory.turns())
-        hyde_doc = generate_hyde(rewritten) if settings.hyde_enabled else rewritten
+        vector_query = generate_hyde(rewritten) if settings.hyde_enabled else rewritten
         candidates = hybrid_retrieve(
             bm25_query=rewritten,
-            vector_query=hyde_doc,
+            vector_query=vector_query,
             bm25_retriever=self.bm25,
             vector_retriever=self.vector,
         )
-        kept = rerank_and_filter(rewritten, candidates, self.cross_encoder)
-        return kept, rewritten
+        # Guarantee the reference tables are present regardless of how the
+        # retrievers ranked them.
+        return self._merge_pinned(candidates), rewritten
 
     def stream_answer(self, query: str) -> Iterator[str]:
         """Run the full pipeline and yield the answer token-by-token."""
-        kept, rewritten = self._retrieve(query)
+        context_docs, rewritten = self._retrieve(query)
 
-        if not kept:
-            yield NO_CONTEXT_FALLBACK
-            self.memory.add(query, NO_CONTEXT_FALLBACK)
-            return
-
-        context = format_docs(kept)
+        context = format_docs(context_docs)
         messages = ANSWER_PROMPT.format_messages(
             context=context, question=rewritten
         )

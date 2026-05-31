@@ -1,4 +1,5 @@
 import os
+import re
 import pdfplumber
 from langchain_core.documents import Document
 from langsmith import traceable
@@ -7,30 +8,95 @@ from utils.logger import get_logger
 logger = get_logger(__name__)
 
 
+# ---------------------------------------------------------------------------
+# Page chrome. The policies are an HTML page exported to PDF, so every page
+# repeats the same web furniture: a "Welcome <date> Logout..." header, a
+# "Policy • Annexure • Change Password" nav strip, and a footer URL + "Page X
+# of Y" / copyright line. None of it is policy content — left in, it pollutes
+# every embedding and BM25 signal and even gets misread as a table row. The
+# loader's job is to emit policy text, so we strip it here at the source.
+# ---------------------------------------------------------------------------
+_CHROME_RE = re.compile(
+    r"Welcome\s+\d{1,2}/\d{1,2}/\d{2,4},?\s*\d{1,2}:\d{2}\s*[AP]\.?M\.?"
+    r"|Logout\s+You are Logged in as\s*:?\s*\d+"
+    r"|You are Logged in as\s*:?\s*\d+"
+    r"|•\s*Policy\s*•\s*Annexure\s*•\s*Change Password"
+    r"|Change Password"
+    r"|©\s*Copyright.*?Reserved"
+    r"|Website Designed & Developed by\s*:?\s*iNET Business Hub"
+    r"|https?://\S+"
+    r"|Page\s+\d+\s+of\s+\d+",
+    re.IGNORECASE,
+)
+
+# A bare date/time stamp is the fingerprint of a chrome row that pdfplumber
+# swept into a table (e.g. "| elcome | ... | 30/04/26, 1:55 A |"), where the
+# leading 'W' was clipped so the word-based pattern above won't catch it.
+_DATESTAMP_RE = re.compile(r"\d{1,2}/\d{1,2}/\d{2,4}")
+
+# Real table headers in this corpus. Used to decide whether a table at the
+# top of a page is a NEW table or the tail of one continued from the page
+# before (which would have no header of its own).
+_HEADER_TOKENS = (
+    "mode of travel",
+    "categories / countries",
+    "classification of cities",
+    "countries",
+)
+
+
+def _strip_chrome(text: str) -> str:
+    """Remove page furniture from extracted narrative text."""
+    text = _CHROME_RE.sub(" ", text)
+    return re.sub(r"\s+", " ", text).strip()
+
+
 def _clean(cell) -> str:
     """Normalize a single table cell."""
     return (cell or "").replace("\n", " ").strip()
 
 
-def _table_to_markdown(table: list[list]) -> str:
-    """
-    Render a pdfplumber table as a markdown table.
+def _is_chrome_row(cells: list[str]) -> bool:
+    """True if a table row is actually swept-in page chrome, not data."""
+    joined = " ".join(c for c in cells if c).strip()
+    if not joined:
+        return True
+    low = joined.lower()
+    if _CHROME_RE.search(joined) or _DATESTAMP_RE.search(joined):
+        return True
+    if re.search(r"page\s+\d+\s+of", low):
+        return True
+    # The footer URL is often broken across cells ("tps://www", ".dcminfotec",
+    # "fid=30"), so the https?:// pattern misses it — match the fragments too.
+    if "://" in low or "dcminfotec" in low or "fid=" in low or "policy-de" in low:
+        return True
+    return False
 
-    The source policy tables use merged cells: the section id (e.g. '1.1a')
-    and Band (e.g. '9/10') are written once and span the Lodging/Boarding/DA
-    rows beneath them. We forward-fill those leading columns so every rate
-    row is self-contained — otherwise a chunk split could orphan a number
-    from its band.
+
+def _extract_rows(table: list[list]) -> list[list[str]]:
+    """
+    Clean a pdfplumber table into uniform-width rows, dropping empty and
+    chrome rows. Forward-fill is deferred until after any cross-page merge so
+    a band label on page N flows into its continuation rows on page N+1.
     """
     rows = [[_clean(c) for c in row] for row in table]
-    rows = [r for r in rows if any(r)]  # drop fully-empty rows
+    rows = [r for r in rows if any(r) and not _is_chrome_row(r)]
     if not rows:
-        return ""
-
+        return []
     width = max(len(r) for r in rows)
-    rows = [r + [""] * (width - len(r)) for r in rows]
+    return [r + [""] * (width - len(r)) for r in rows]
 
-    # Forward-fill the first two columns (section id + band) down each group.
+
+def _forward_fill(rows: list[list[str]]) -> None:
+    """
+    Forward-fill the first two columns (section id + band) down each group, in
+    place. The source tables write these once and span the Lodging/Boarding/DA
+    sub-rows beneath, so without this every rate row but the first is orphaned
+    from its band.
+    """
+    if not rows:
+        return
+    width = len(rows[0])
     last = ["", ""]
     for r in rows:
         for c in range(min(2, width)):
@@ -39,7 +105,18 @@ def _table_to_markdown(table: list[list]) -> str:
             else:
                 r[c] = last[c]
 
-    header, *body = rows
+
+def _looks_like_header(row: list[str]) -> bool:
+    joined = " ".join(row).lower()
+    return any(tok in joined for tok in _HEADER_TOKENS)
+
+
+def _render_markdown(rows: list[list[str]]) -> str:
+    """Render cleaned rows as a markdown table (row 0 = header)."""
+    if not rows:
+        return ""
+    width = len(rows[0])
+    header, body = rows[0], rows[1:]
     lines = [
         "| " + " | ".join(header) + " |",
         "| " + " | ".join(["---"] * width) + " |",
@@ -51,11 +128,15 @@ def _table_to_markdown(table: list[list]) -> str:
 
 def _load_one_pdf(path: str) -> list[Document]:
     """
-    Load a single PDF, keeping narrative text and rendering tables as
-    markdown. Table regions are cropped out of the narrative so numbers
-    aren't duplicated in their mangled, run-together form.
+    Load a single PDF, keeping narrative text and rendering tables as markdown.
+    Table regions are cropped out of the narrative so numbers aren't duplicated
+    in their mangled form, page chrome is stripped, and a table that breaks
+    across a page boundary (e.g. the band rate matrix) is stitched back into a
+    single self-describing table rather than left as a headerless fragment.
     """
-    docs: list[Document] = []
+    page_parts: list[tuple[int, str, list[list[list[str]]]]] = []
+    prev_page_last_table: list[list[str]] | None = None
+
     with pdfplumber.open(path) as pdf:
         for page_idx, page in enumerate(pdf.pages):
             tables = page.find_tables()
@@ -68,20 +149,45 @@ def _load_one_pdf(path: str) -> list[Document]:
                         return False
                 return True
 
-            narrative = (page.filter(outside_tables).extract_text() or "").strip()
+            narrative = _strip_chrome(
+                page.filter(outside_tables).extract_text() or ""
+            )
 
-            parts = [narrative] if narrative else []
-            for t in tables:
-                md = _table_to_markdown(t.extract())
-                if md:
-                    parts.append(md)
+            page_tables = [_extract_rows(t.extract()) for t in tables]
+            page_tables = [r for r in page_tables if r]
 
-            content = "\n\n".join(parts).strip()
-            if content:
-                docs.append(Document(
-                    page_content=content,
-                    metadata={"source": os.path.basename(path), "page": page_idx},
-                ))
+            kept_tables: list[list[list[str]]] = []
+            for i, rows in enumerate(page_tables):
+                is_continuation = (
+                    i == 0
+                    and prev_page_last_table is not None
+                    and len(rows[0]) == len(prev_page_last_table[0])
+                    and not _looks_like_header(rows[0])
+                )
+                if is_continuation:
+                    # Tail of the previous page's table: append its rows to that
+                    # same table object (it lives in an earlier page's part).
+                    prev_page_last_table.extend(rows)
+                else:
+                    kept_tables.append(rows)
+                    prev_page_last_table = rows
+
+            page_parts.append((page_idx, narrative, kept_tables))
+
+    docs: list[Document] = []
+    for page_idx, narrative, tables in page_parts:
+        parts = [narrative] if narrative else []
+        for rows in tables:
+            _forward_fill(rows)
+            md = _render_markdown(rows)
+            if md:
+                parts.append(md)
+        content = "\n\n".join(parts).strip()
+        if content:
+            docs.append(Document(
+                page_content=content,
+                metadata={"source": os.path.basename(path), "page": page_idx},
+            ))
     logger.info(f"Loaded {len(docs)} page(s) from '{path}'")
     return docs
 

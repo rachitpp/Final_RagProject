@@ -20,8 +20,5 @@ class ConversationMemory:
         """Return a copy of the recent turns."""
         return list(self._turns)
 
-    def is_empty(self) -> bool:
-        return not self._turns
-
     def clear(self) -> None:
         self._turns.clear()

@@ -23,14 +23,15 @@ def _bm25_tokenize(text: str) -> List[str]:
 
 
 def build_vector_retriever(store: QdrantVectorStore):
-    """Vector retriever with MMR for diversity."""
+    """
+    Plain semantic similarity retriever. MMR was removed: it diversifies the
+    vector hits down to k, but the result is then unioned with BM25 and (on
+    this small corpus) almost everything is kept anyway, so the diversification
+    was cancelled downstream. Straight similarity is simpler and equivalent here.
+    """
     return store.as_retriever(
-        search_type="mmr",
-        search_kwargs={
-            "k": settings.vector_k,
-            "fetch_k": settings.vector_fetch_k,
-            "lambda_mult": settings.vector_mmr_lambda,
-        },
+        search_type="similarity",
+        search_kwargs={"k": settings.vector_k},
     )
 
 

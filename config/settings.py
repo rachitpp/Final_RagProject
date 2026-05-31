@@ -12,8 +12,16 @@ class Settings:
     pdf_path: str = "pdf"  # file OR folder of PDFs
 
     # --- Chunking ---
-    chunk_size: int = 1000
-    chunk_overlap: int = 200
+    # The band rate matrix renders to ~1.1k chars as one self-describing table
+    # (loader stitches it back together across the PDF page break). A 1000-char
+    # window would re-split it mid-table, undoing that work — so the window is
+    # sized to keep a whole table in one chunk while still splitting the larger
+    # prose pages.
+    chunk_size: int = 1500
+    # Splits land mostly on "\n\n" part boundaries (narrative vs table), so a
+    # large overlap mostly just duplicates text across adjacent chunks (both of
+    # which are usually retrieved on this small corpus). Keep it small.
+    chunk_overlap: int = 80
     chunk_separators: List[str] = field(
         default_factory=lambda: ["\n\n", "\n", ". ", " ", ""]
     )
@@ -35,30 +43,21 @@ class Settings:
     qdrant_vector_size: int = 768          # text-embedding-004 -> 768 dims
 
     # --- Retrieval ---
-    vector_k: int = 10         # final chunks from vector retriever
-    vector_fetch_k: int = 30   # candidates before MMR diversification
-    vector_mmr_lambda: float = 0.5  # 0=diversity, 1=relevance
+    # The corpus is tiny (~15 chunks). BM25 (keyword) + vector (semantic)
+    # similarity, unioned and deduped, gives high recall; the must-have
+    # reference tables are then guaranteed by pinning (see retrieval/pinned.py).
+    # No reranker: ms-marco-MiniLM scored these tabular chunks ~0.000 and any
+    # binding top_n/threshold dropped answer-bearing tables, so it was inert
+    # dead weight. Revisit a real reranker (e.g. bge-reranker) only if the
+    # corpus grows large enough that feeding most of it stops being viable.
+    vector_k: int = 10
     bm25_k: int = 10
 
-    # --- Reranking + confidence filter ---
-    cross_encoder_model: str = "cross-encoder/ms-marco-MiniLM-L-6-v2"
-    # On this small, tabular corpus ms-marco-MiniLM mis-ranks answer-bearing
-    # chunks (e.g. a bare city-classification list) to the bottom, so an
-    # aggressive top_n drops exactly what's needed for multi-hop questions
-    # ("Pune rate" needs the city->category chunk AND the band->rate chunk).
-    # We keep all retrieved candidates and let the cross-encoder only ORDER
-    # them. Revisit (lower top_n / better reranker) if the corpus grows large.
-    rerank_top_n: int = 20            # max chunks kept after rerank
-    # Threshold is on sigmoid(logit) so it lives in [0, 1].
-    # NOTE: ms-marco-MiniLM gives near-zero ABSOLUTE scores on this tabular
-    # policy corpus (even the answer-bearing rate-matrix chunk scores ~0.000),
-    # so ANY positive floor drops the answer and the system falls back to
-    # "couldn't find anything". We disable the floor and rely purely on the
-    # cross-encoder's RANKING (top_n) plus the LLM's own grounding guardrail.
-    rerank_score_threshold: float = 0.0
-
     # --- HYDE ---
-    hyde_enabled: bool = True
+    # Off: at ~15 chunks BM25+vector already recall almost everything, so the
+    # hypothetical-document step added an LLM call per query for ~zero recall
+    # gain. The code remains; flip this on if the corpus grows.
+    hyde_enabled: bool = False
     hyde_max_tokens: int = 256
 
     # --- Conversation memory ---
