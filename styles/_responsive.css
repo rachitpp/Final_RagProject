@@ -56,4 +56,12 @@
   }
   .starter-grid { animation: none !important; }
   .starter { transition: none !important; transform: none !important; }
+  /* Composer hand-off pulse + looping activity/decorative animations. */
+  [data-testid="stChatInput"] > div.is-filling,
+  [data-testid="stChatInput"] textarea.just-filled,
+  .status-dot,
+  .thinking-glyph,
+  .loader-dots span {
+    animation: none !important;
+  }
 }

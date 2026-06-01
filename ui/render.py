@@ -99,6 +99,50 @@ def _safe_partial_markdown(text: str) -> str:
     return text
 
 
+def _isolate_tables(text: str) -> str:
+    """Guarantee a blank line after a markdown table.
+
+    The model often emits its closing citation — e.g. "(domestic travel.pdf,
+    p.1)" — on the line directly after the last table row, with no blank line
+    between them. Streamlit's markdown parser then folds that line into the
+    table block, so the citation chip renders *inside* the table card. A blank
+    line terminates the table cleanly, pushing the citation out as its own
+    paragraph below the card.
+
+    A "table row" is a line whose first non-space char is "|" and which has at
+    least two pipes — the GFM form the model emits. Keying on the leading pipe
+    (rather than just counting pipes) avoids false positives on prose that
+    happens to contain "|", and we skip lines inside fenced code blocks so a
+    code sample containing pipes is never mutated.
+    """
+    def is_row(s: str) -> bool:
+        return s.lstrip().startswith("|") and s.count("|") >= 2
+
+    lines = text.split("\n")
+    out: list[str] = []
+    in_fence = False
+    for i, line in enumerate(lines):
+        stripped = line.lstrip()
+        if stripped.startswith("```") or stripped.startswith("~~~"):
+            in_fence = not in_fence
+        out.append(line)
+        if in_fence:
+            continue
+        nxt = lines[i + 1] if i + 1 < len(lines) else None
+        if nxt is None:
+            continue
+        if is_row(line) and not is_row(nxt) and nxt.strip() != "":
+            out.append("")
+    return "\n".join(out)
+
+
+def _answer_html(text: str) -> str:
+    """Assemble the rendered assistant answer: chipified body + sources +
+    actions. Centralised so streaming and history render identically."""
+    body = _isolate_tables(text)
+    return chipify_citations(body) + sources_html(body) + ASSISTANT_ACTIONS_HTML
+
+
 def stream_with_indicator(pipeline: RAGPipeline, prompt: str) -> str:
     """Stream the answer behind a thinking indicator.
 
@@ -128,10 +172,7 @@ def stream_with_indicator(pipeline: RAGPipeline, prompt: str) -> str:
         placeholder.markdown(ERROR_HTML, unsafe_allow_html=True)
         return ""
 
-    placeholder.markdown(
-        chipify_citations(full) + sources_html(full) + ASSISTANT_ACTIONS_HTML,
-        unsafe_allow_html=True,
-    )
+    placeholder.markdown(_answer_html(full), unsafe_allow_html=True)
     return full
 
 
@@ -141,12 +182,7 @@ def render_history() -> None:
             render_user_message(msg["content"])
         else:
             with st.chat_message("assistant"):
-                st.markdown(
-                    chipify_citations(msg["content"])
-                    + sources_html(msg["content"])
-                    + ASSISTANT_ACTIONS_HTML,
-                    unsafe_allow_html=True,
-                )
+                st.markdown(_answer_html(msg["content"]), unsafe_allow_html=True)
 
 
 def handle_user_input(pipeline: RAGPipeline, prompt: str) -> None:

@@ -98,17 +98,36 @@
    and tabular figures so numeric columns align.
    ============================================================ */
 [data-testid="stChatMessageContent"] table {
-  width: 100%;
-  border-collapse: collapse;
+  /* Fit-and-hug, never scroll:
+       display:table + width:auto  -> a 1-2 column table shrinks to its own
+                      content, so there's no dead space on the right (the old
+                      "empty box" artifact).
+       max-width:100% + table-layout:auto + wrapping headers -> a 4-5 column
+                      table compresses its columns and wraps the header text
+                      to fit the message width, so the LAST column is always
+                      visible without a horizontal scrollbar.
+     We drop the old display:block + overflow-x:auto scroll model on purpose:
+     for this corpus (short numeric cells, <=5 columns) fitting reads far
+     better than asking the reader to scroll inside the card. */
+  display: table;
+  table-layout: auto;
+  width: auto;
+  max-width: 100%;
+  /* separate model (not collapse) so the corner cells can carry a
+     border-radius and their fills don't poke past the rounded card edge. */
+  border-collapse: separate;
+  border-spacing: 0;
   margin: 1.1rem 0;
   font-family: var(--sans);
   font-size: 0.9rem;
   line-height: 1.5;
   font-variant-numeric: tabular-nums;
-  display: block;
-  overflow-x: auto;            /* keep wide rate matrices scrollable on mobile */
+  background: var(--paper-2);  /* faint inset surface so a narrow card reads as designed */
   border: 1px solid var(--rule-strong);
   border-radius: var(--radius-sm);
+  box-shadow:
+    0 1px 2px rgba(0, 0, 0, 0.25),
+    0 10px 24px -16px rgba(0, 0, 0, 0.55);
 }
 [data-testid="stChatMessageContent"] thead th {
   background: var(--paper-4);
@@ -116,7 +135,10 @@
   font-weight: 600;
   text-align: left;
   letter-spacing: 0.01em;
-  white-space: nowrap;
+  /* wrap long headers ("Category A (Rupees per day)") instead of forcing the
+     table wider than the message — this is what lets wide tables fit. */
+  white-space: normal;
+  vertical-align: bottom;
 }
 [data-testid="stChatMessageContent"] th,
 [data-testid="stChatMessageContent"] td {
@@ -125,6 +147,7 @@
   border-right: 1px solid var(--rule);
   color: var(--ink-soft);
   vertical-align: top;
+  overflow-wrap: anywhere;     /* break a stray long token rather than overflow */
 }
 [data-testid="stChatMessageContent"] th:last-child,
 [data-testid="stChatMessageContent"] td:last-child {
@@ -132,6 +155,20 @@
 }
 [data-testid="stChatMessageContent"] tbody tr:last-child td {
   border-bottom: none;
+}
+/* Round the four corner cells so their fills follow the card's rounded
+   border (the separate border model makes per-cell radius honoured). */
+[data-testid="stChatMessageContent"] thead th:first-child {
+  border-top-left-radius: var(--radius-sm);
+}
+[data-testid="stChatMessageContent"] thead th:last-child {
+  border-top-right-radius: var(--radius-sm);
+}
+[data-testid="stChatMessageContent"] tbody tr:last-child td:first-child {
+  border-bottom-left-radius: var(--radius-sm);
+}
+[data-testid="stChatMessageContent"] tbody tr:last-child td:last-child {
+  border-bottom-right-radius: var(--radius-sm);
 }
 [data-testid="stChatMessageContent"] tbody tr {
   transition: background var(--t-hover) var(--ease);

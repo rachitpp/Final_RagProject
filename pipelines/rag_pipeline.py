@@ -99,6 +99,7 @@ class RAGPipeline:
         context_docs, rewritten, trip_type, assumed = self._retrieve(query)
 
         context = format_docs(context_docs)
+
         messages = ANSWER_PROMPT.format_messages(
             context=context,
             question=rewritten,

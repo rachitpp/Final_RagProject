@@ -77,6 +77,8 @@
     border-color var(--t-hover) var(--ease),
     background var(--t-hover) var(--ease),
     color var(--t-hover) var(--ease),
+    opacity var(--t-hover) var(--ease),
+    box-shadow var(--t-hover) var(--ease),
     transform var(--t-hover) var(--ease);
 }
 .starter:hover {
@@ -86,6 +88,20 @@
   transform: translateY(-1px);
 }
 .starter:active { transform: translateY(0); }
+/* On click: the chosen card lifts + accents while its siblings dim and
+   recede, so the grid acknowledges the pick during the hand-off to the
+   composer (see the .is-filling pulse in _chat-input.css). */
+.starter.is-picked {
+  border-color: var(--accent) !important;
+  background: var(--paper-3);
+  color: var(--ink);
+  transform: translateY(-2px) scale(1.015);
+  box-shadow: 0 0 0 3px var(--focus-halo);
+}
+.starter-grid.is-dismissing .starter:not(.is-picked) {
+  opacity: 0.32;
+  transform: scale(0.985);
+}
 .starter:focus-visible {
   outline: none;
   border-color: var(--accent);

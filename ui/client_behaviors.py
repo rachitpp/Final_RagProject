@@ -63,7 +63,7 @@ def install_client_behaviors() -> None:
             try { console.error('[RAG] cannot reach parent document', e); } catch (_) {}
             return;
           }
-          const VERSION = 11;
+          const VERSION = 14;
           if (doc.__ragClientVersion === VERSION) return;
           doc.__ragClientVersion = VERSION;
           try { console.log('[RAG] client behaviors installing v' + VERSION); } catch (e) {}
@@ -227,6 +227,29 @@ def install_client_behaviors() -> None:
           win.addEventListener('scroll', onScroll, { passive: true });
           win.addEventListener('resize', placeJump);
 
+          /* Keep the jump button glued above the composer as it auto-grows.
+             The bar gets taller as the query gets longer; without this the
+             button keeps its old offset and ends up overlapping the taller
+             bar. Two triggers for robustness: a ResizeObserver on the input
+             container, and a delegated 'input' listener (fires even if the
+             observed node is swapped out across a Streamlit rerun). */
+          doc.addEventListener('input', function (e) {
+            const t = e.target;
+            if (t && t.tagName === 'TEXTAREA'
+                && t.closest && t.closest('[data-testid="stChatInput"]')) {
+              placeJump();
+            }
+          }, true);
+          if (win.ResizeObserver) {
+            const jumpRO = new win.ResizeObserver(function () { placeJump(); });
+            ['[data-testid="stChatInput"]', '[data-testid="stBottom"]'].forEach(
+              function (sel) {
+                const el = doc.querySelector(sel);
+                if (el) { try { jumpRO.observe(el); } catch (e) {} }
+              }
+            );
+          }
+
           function releaseHold() { win.__ragHoldUntil = 0; }
           ['wheel', 'touchstart', 'touchmove'].forEach(function (ev) {
             win.addEventListener(ev, releaseHold, { passive: true });
@@ -360,7 +383,10 @@ def install_client_behaviors() -> None:
                          || btn.closest('[data-testid="stChatMessage"]');
             if (!content) return;
             const clone = content.cloneNode(true);
-            clone.querySelectorAll('.msg-actions').forEach(function (n) { n.remove(); });
+            // Strip UI chrome from the copy: the action bar and the sources
+            // disclosure (its toggle + list). Inline citation chips stay, as
+            // they read as part of the answer text.
+            clone.querySelectorAll('.msg-actions, .sources').forEach(function (n) { n.remove(); });
             const text = (clone.innerText || '').trim();
             if (!text) return;
             copyText(text, function () {
@@ -449,18 +475,40 @@ def install_client_behaviors() -> None:
             if (q == null) return;
             const ta = doc.querySelector('[data-testid="stChatInput"] textarea');
             if (!ta) return;
+
+            // Acknowledge the pick: accent the chosen card, dim its siblings.
+            const grid = card.closest('.starter-grid');
+            if (grid) grid.classList.add('is-dismissing');
+            card.classList.add('is-picked');
+
+            // Pulse the composer pill as the text lands, and fade the text in,
+            // so the hand-off from card to query box feels continuous rather
+            // than an instant jump. (Animations defined in the CSS partials.)
+            const pill = doc.querySelector('[data-testid="stChatInput"] > div');
+            if (pill) {
+              pill.classList.remove('is-filling');
+              void pill.offsetWidth;          // restart the animation
+              pill.classList.add('is-filling');
+            }
             setNativeValue(ta, q);
+            ta.classList.remove('just-filled');
+            void ta.offsetWidth;              // restart the animation
+            ta.classList.add('just-filled');
             ta.focus();
             try { ta.setSelectionRange(ta.value.length, ta.value.length); } catch (err) {}
-            // Submit it: after React registers the value (enabling the send
-            // button), click Send. Try a couple of times in case it's a tick
-            // behind. Falls back to leaving the text in the box to edit/send.
-            let tries = 0;
-            (function submit() {
-              const send = doc.querySelector('[data-testid="stChatInput"] button');
-              if (send && !send.disabled) { send.click(); return; }
-              if (tries++ < 8) setTimeout(submit, 60);
-            })();
+
+            // Give the fill animation a beat to play, then submit: after React
+            // registers the value (enabling the send button), click Send. Try a
+            // couple of times in case it's a tick behind. Falls back to leaving
+            // the text in the box to edit/send.
+            setTimeout(function () {
+              let tries = 0;
+              (function submit() {
+                const send = doc.querySelector('[data-testid="stChatInput"] button');
+                if (send && !send.disabled) { send.click(); return; }
+                if (tries++ < 8) setTimeout(submit, 60);
+              })();
+            }, 280);
           }, true);
 
           placeJump();
