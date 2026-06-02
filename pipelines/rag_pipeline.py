@@ -124,27 +124,35 @@ class RAGPipeline:
             trip_type=_trip_label(trip_type, assumed),
         )
 
-        collected: list[str] = []
+        final_answer_pieces: list[str] = []
+        
         for _ in range(_MAX_TOOL_ROUNDS):
-            gathered = None  # accumulates the round's chunks into one message
+            round_pieces: list[str] = []
+            gathered = None
+            
             for chunk in self.llm.stream(messages):
                 piece = getattr(chunk, "content", None) or ""
                 if piece:
-                    collected.append(piece)
-                    yield piece
+                    round_pieces.append(piece)
                 gathered = chunk if gathered is None else gathered + chunk
-
+            
             tool_calls = getattr(gathered, "tool_calls", None) if gathered else None
+            
             if not tool_calls:
-                break  # no calculation needed (or done) — this round is the answer
-
-            # Feed the model's tool request + our exact results, then loop to
-            # let it write the answer from them.
+                # Final answer - yield and store
+                final_answer = "".join(round_pieces)
+                for char in final_answer:
+                    yield char
+                final_answer_pieces.append(final_answer)
+                break
+            
+            # Tool call round - accumulate without yielding
             messages.append(gathered)
             for call in tool_calls:
                 messages.append(ToolMessage(
                     content=self._run_tool(call),
                     tool_call_id=call["id"],
                 ))
-
-        self.memory.add(query, "".join(collected))
+        
+        # Add to memory after all streaming is done
+        self.memory.add(query, "".join(final_answer_pieces))
