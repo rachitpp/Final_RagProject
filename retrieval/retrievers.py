@@ -1,26 +1,11 @@
-import re
-from typing import Dict, List
+from typing import List
 from langchain_qdrant import QdrantVectorStore
-from langchain_community.retrievers import BM25Retriever
 from langchain_core.documents import Document
-from langsmith import traceable
 from qdrant_client.http import models as qmodels
 from config.settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
-
-
-def _bm25_tokenize(text: str) -> List[str]:
-    """
-    Lowercase + split on non-alphanumerics.
-
-    BM25Retriever's default tokenizer is a bare str.split(), so tokens keep
-    their punctuation and case: 'Pune.' never matches a query token 'pune'.
-    Our tables are full of punctuation (markdown pipes, trailing periods),
-    so we normalize both sides with this.
-    """
-    return re.findall(r"[a-z0-9]+", text.lower())
 
 
 def vector_search(
@@ -67,6 +52,7 @@ def vector_search(
             "policy tag — re-run create_db.py. Falling back to unfiltered search."
         )
         return store.similarity_search(query, k=k)
+    logger.info(f"Retrieved Vector={len(docs)} (policy={policy})")
     return docs
 
 
@@ -75,7 +61,8 @@ def _scroll_all_docs(store: QdrantVectorStore) -> List[Document]:
     Pull every stored chunk back out of Qdrant via scroll().
     QdrantVectorStore stores page_content under `content_payload_key`
     and metadata under `metadata_payload_key` (defaults: 'page_content'
-    and 'metadata').
+    and 'metadata'). Used to resolve the pinned reference tables at startup
+    and to populate the sidebar's Library view.
     """
     docs: List[Document] = []
     offset = None
@@ -99,83 +86,3 @@ def _scroll_all_docs(store: QdrantVectorStore) -> List[Document]:
         if offset is None:
             break
     return docs
-
-
-def build_bm25_retriever(store: QdrantVectorStore) -> BM25Retriever:
-    """Rebuild a single combined BM25 index in-memory from documents already in
-    Qdrant. Kept for the sidebar's Library view (which lists every document)."""
-    docs = _scroll_all_docs(store)
-    retriever = BM25Retriever.from_documents(
-        docs, preprocess_func=_bm25_tokenize
-    )
-    retriever.k = settings.bm25_k
-    return retriever
-
-
-def build_bm25_by_policy(store: QdrantVectorStore) -> Dict[str, BM25Retriever]:
-    """
-    Build one BM25 index PER policy. BM25 is in-memory and can't be filtered
-    after the fact like the vector store, so we keep a separate index per policy
-    and pick the matching one at query time — the keyword-search equivalent of
-    the vector metadata filter.
-    """
-    docs = _scroll_all_docs(store)
-    grouped: Dict[str, List[Document]] = {}
-    for d in docs:
-        policy = (d.metadata or {}).get("policy")
-        if not policy:
-            continue
-        grouped.setdefault(policy, []).append(d)
-
-    retrievers: Dict[str, BM25Retriever] = {}
-    for policy, group in grouped.items():
-        r = BM25Retriever.from_documents(group, preprocess_func=_bm25_tokenize)
-        r.k = settings.bm25_k
-        retrievers[policy] = r
-    logger.info(f"Built BM25 indexes for policies: {sorted(retrievers)}")
-    return retrievers
-
-
-def _dedupe(docs: List[Document]) -> List[Document]:
-    """Drop duplicates by exact page_content, preserving order."""
-    seen, out = set(), []
-    for d in docs:
-        if d.page_content not in seen:
-            seen.add(d.page_content)
-            out.append(d)
-    return out
-
-
-@traceable(name="hybrid_retrieve")
-def hybrid_retrieve(
-    bm25_query: str,
-    vector_query: str,
-    store: QdrantVectorStore,
-    bm25_by_policy: Dict[str, BM25Retriever],
-    policy: str,
-) -> List[Document]:
-    """
-    Hybrid retrieval restricted to one policy:
-      - BM25 uses the (rewritten) user keywords against the policy's index.
-      - Vector search uses the (optionally HYDE-expanded) query, filtered to the
-        same policy.
-    Results are concatenated + de-duped. Both legs are policy-scoped, so a
-    Domestic query never surfaces Foreign body chunks (and vice versa).
-    """
-    bm25 = bm25_by_policy.get(policy)
-    if bm25 is not None:
-        bm25_docs = bm25.invoke(bm25_query)
-    else:
-        logger.warning(
-            f"No BM25 index for policy={policy!r} (re-ingest needed?); "
-            "skipping the keyword leg for this query."
-        )
-        bm25_docs = []
-    vec_docs = vector_search(store, vector_query, policy)
-    logger.info(
-        f"Retrieved BM25={len(bm25_docs)}, Vector={len(vec_docs)} "
-        f"(policy={policy})"
-    )
-    merged = _dedupe(bm25_docs + vec_docs)
-    logger.info(f"After dedupe: {len(merged)} candidate(s)")
-    return merged

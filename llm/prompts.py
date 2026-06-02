@@ -28,41 +28,6 @@ from langchain_core.prompts import ChatPromptTemplate
 
 
 # ─────────────────────────────────────────────────────────────────────
-# HYDE  — improves retrieval only. The passage is embedded and matched,
-# never shown to a user and never trusted, so it need not be correct.
-# Its job is purely vocabulary + register bridging.
-# ─────────────────────────────────────────────────────────────────────
-HYDE_PROMPT = ChatPromptTemplate.from_messages([
-    ("system",
-     "You generate a single hypothetical passage used only to improve "
-     "semantic retrieval. It is embedded and matched against a document "
-     "corpus, never shown to a user and never treated as ground truth, "
-     "so it does not need to be factually correct. Its only purpose is to "
-     "read like the passage that would answer the question if it appeared "
-     "in this company's HR travel-reimbursement policy, so that its "
-     "embedding lands near the real policy text.\n\n"
-     "Write one dense paragraph in the register of a formal corporate HR "
-     "policy. Deliberately use the domain vocabulary a user is unlikely to "
-     "use themselves, so that casual phrasing in the question still "
-     "retrieves the formal chunk: entitlement, band, category, allowance, "
-     "reimbursement, lodging, boarding, daily allowance, inter-city, "
-     "intra-city, conveyance, sanction.\n\n"
-     "If the question implies overseas / non-India travel, lean into "
-     "overseas-travel register (a single consolidated daily allowance "
-     "covering boarding, lodging and local conveyance; foreign-exchange "
-     "entitlement). If it implies travel within India, lean into domestic "
-     "register (separate lodging, boarding and own-arrangement allowances; "
-     "classification of cities; class of rail / air travel). This register "
-     "choice exists only to steer the embedding toward the correct policy "
-     "— do NOT state specific amounts, percentages, thresholds, durations, "
-     "or country / city classifications.\n\n"
-     "Do not refuse, hedge, or say you don't know. Output only the "
-     "paragraph."),
-    ("human", "Question: {question}\n\nPassage:"),
-])
-
-
-# ─────────────────────────────────────────────────────────────────────
 # REWRITE — contextual query rewriting. Resolve references, preserve
 # intent, carry forward the trip-type signal so routing still works.
 # Does not answer the question.
@@ -152,7 +117,13 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "stations\"): decide which of the table's categories the named place "
      "falls under, using the place's real-world status when the table's "
      "wording requires it (e.g. recognising that a named city is a State "
-     "capital). Only assign the table's final \"all other\" catch-all "
+     "capital). Before assigning a category that depends on a qualitative "
+     "status (e.g. \"State capital\"), VERIFY that status against real-world "
+     "knowledge — a city is a State capital ONLY if it is the actual seat of a "
+     "State/UT government (e.g. Jaipur=Rajasthan, Bengaluru=Karnataka). A "
+     "merely large or well-known city (e.g. Gurgaon, Noida, Pune) is NOT a "
+     "State capital and must NOT be placed in the capital category on that "
+     "basis. Only assign the table's final \"all other\" catch-all "
      "category if the place matches none of the higher ones. ALWAYS state "
      "that reasoning inline on the FIRST answer, every time you classify a "
      "place — including when it is directly named in the table (write "
@@ -237,7 +208,17 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "allowance types into one per-day number before multiplying — they "
      "are different entitlements (e.g. a bill-backed lodging cap vs a flat "
      "boarding allowance), so each gets its own subtotal and the total is "
-     "their sum.\n\n"
+     "their sum.\n"
+     "- For a MULTI-CITY trip, the subtotal is PER COMPONENT ACROSS ALL "
+     "LEGS, not per city. Lay out the table with one column per allowance "
+     "component summed over every leg — e.g. \"Lodging (all legs)\", "
+     "\"Boarding (all legs)\", then \"Grand total\" — NOT a separate column "
+     "per city. So for 3 days in a Category-A city plus 3 in a Category-B "
+     "city, the Lodging column shows the single summed figure "
+     "(A-rate×3 + B-rate×3), the Boarding column likewise, and the grand "
+     "total is their sum. Show the per-leg arithmetic inline in the cell or "
+     "in one line above the table, but the column itself is the across-legs "
+     "subtotal.\n\n"
 
      "── OUTPUT — WRITE LIKE A HELPFUL ASSISTANT ──\n"
      "Reply the way a knowledgeable colleague would — the polished, "
@@ -322,9 +303,10 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "This is a domestic trip. Delhi is **Category <X>**; Jaipur is a State "
      "capital, so **Category <Y>**. (Assuming a hotel stay with bills; if you "
      "self-arrange, you'd get <the self-arrangement allowance> instead.)\n\n"
-     "| Band | <Delhi col(s)> | <Jaipur col(s)> | Grand total |\n"
+     "| Band | Lodging (all legs) | Boarding (all legs) | Grand total |\n"
      "| --- | --- | --- | --- |\n"
-     "| <band> | <amount> | <amount> | <total> |\n\n"
+     "| <band> | <Delhi LA×3 + Jaipur LA×3 = subtotal> | <Delhi BA×3 + Jaipur "
+     "BA×3 = subtotal> | <grand total> |\n\n"
      "Let me know your band for a single figure."),
     ("human",
      "Context:\n{context}\n\n"

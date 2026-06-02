@@ -48,7 +48,6 @@ in a new PDF without retraining anything.
 | **Language model** | Google **Gemini 2.5 Flash** (Vertex AI) | Writes the answers |
 | **Embeddings** | Google **text-embedding-004** (Vertex AI) | Turns text into meaning-vectors (768 numbers) |
 | **Vector database** | **Qdrant Cloud** | Stores vectors; finds the closest matches |
-| **Keyword search** | **BM25** (`rank-bm25`) | Classic exact-term search |
 | **Framework** | **LangChain** | Glue between models, retrievers, and the DB |
 | **PDF parsing** | **pdfplumber** | Extracts text *and tables* from the PDF |
 | **Web UI** | **Streamlit** | The chat interface |
@@ -68,22 +67,26 @@ similar numbers**. To find relevant text, we embed the question and ask Qdrant f
 the chunks whose vectors are closest. This finds matches by *meaning*, so
 "overseas trip" can match a chunk about "foreign travel" even with no shared words.
 
-### 2. Hybrid retrieval (keyword + meaning), scoped to one policy
-Semantic search is great for paraphrases but can miss **exact terms** like
-"Category A" or "DA". So the project runs **both**:
-- **BM25** for precise keyword hits, and
-- **vector search** for meaning,
+### 2. Semantic search, scoped to one policy
+To find relevant text, the project embeds the question and asks Qdrant for the
+chunks whose vectors are closest in **meaning** — so "overseas trip" matches a
+chunk about "foreign travel" even with no shared words.
 
-then merges and de-duplicates the results — the precision of keywords with the
-flexibility of meaning.
-
-Crucially, **both searches are restricted to one policy.** A small upfront step
+Crucially, **the search is restricted to one policy.** A small upfront step
 classifies each question as Domestic or Foreign, and that decision filters
-retrieval (a Qdrant metadata filter for vectors, a separate BM25 index per
-policy) so a Domestic question never pulls Foreign chunks, and vice versa. This
-**policy isolation is done by the retriever, not the prompt** — which is why the
-two policies (which reuse the same A/B/C labels and the same "DA" abbreviation
-for different things) can't cross-contaminate an answer.
+retrieval (a Qdrant metadata filter on `policy`) so a Domestic question never
+pulls Foreign chunks, and vice versa. This **policy isolation is done by the
+retriever, not the prompt** — which is why the two policies (which reuse the
+same A/B/C labels and the same "DA" abbreviation for different things) can't
+cross-contaminate an answer.
+
+> **Why not hybrid (keyword) search?** An earlier version also ran BM25 keyword
+> search alongside the vector search and merged the results. On this tiny corpus
+> (~15 chunks), an A/B run of the eval harness showed it made no difference —
+> vector search with `k=10` already recalls almost the entire policy sub-corpus,
+> and the must-have tables are guaranteed by pinning (technique 4) regardless. So
+> it was removed in favour of the simpler vector-only path. Same story for HYDE
+> and a cross-encoder reranker: measured, found inert at this size, removed.
 
 ### 3. Table-aware document parsing
 The whole policy lives in **tables** (rate matrices, city categories). Naive PDF
@@ -105,13 +108,7 @@ Don't gamble on search finding the data you *know* is always needed — guarante
 system rewrites follow-ups into standalone questions before searching — but only
 when it detects a genuine follow-up, leaving clear questions untouched.
 
-### 6. HYDE — Hypothetical Document Embeddings (built, currently off)
-A technique where the LLM writes a *fake* answer paragraph in formal policy
-language, and we embed *that* (richer than the bare question) to search with. It's
-implemented but disabled, because on this small corpus the simpler retrieval
-already finds everything. It's there to switch on if the document set grows.
-
-### 7. Prompt engineering: separate "how to reason" from "the data"
+### 6. Prompt engineering: separate "how to reason" from "the data"
 The answering prompt is large and detailed — but it contains **zero policy
 numbers**. It only encodes *behaviour*: use the trip type it's given (the
 retriever already isolated the policy, so the prompt doesn't fight to keep them
@@ -121,21 +118,21 @@ cite the page. Every actual figure comes from the retrieved context. The litmus
 test the author used: *"If the PDF changed tomorrow, would this line be wrong?"*
 If yes, it's data and doesn't belong in the prompt.
 
-### 8. Grounded citations
+### 7. Grounded citations
 Each chunk is labelled with its source and page before being shown to the model,
 and the prompt only allows citations that exist in that context. This prevents the
 classic failure where an AI invents an official-looking "Section 4.2, p.12."
 
-### 9. Streaming responses
+### 8. Streaming responses
 Answers are sent **token by token** so the user sees text appear live, instead of
 waiting for the whole reply — the same feel as ChatGPT.
 
-### 10. Conversation memory
+### 9. Conversation memory
 A small buffer keeps the last few turns so the assistant understands context
 across questions, without any database or persistence — it simply resets on "New
 chat."
 
-### 11. Observability (LangSmith tracing)
+### 10. Observability (LangSmith tracing)
 Each stage (rewrite, retrieve, answer) is traced, so a developer can open a single
 query and see exactly what was retrieved and why — invaluable for debugging *why*
 an answer came out the way it did.
@@ -159,10 +156,9 @@ Final_RagProject/
 │
 ├── retrieval/              # Finding the right chunks  (the query pipeline)
 │   ├── classify.py         #   route to Domestic vs Foreign policy
-│   ├── retrievers.py       #   BM25 + vector hybrid search (policy-scoped)
+│   ├── retrievers.py       #   vector (semantic) search (policy-scoped)
 │   ├── pinned.py           #   guaranteed reference tables
 │   ├── rewrite.py          #   follow-up query rewriting
-│   ├── hyde.py             #   hypothetical-document expansion (optional)
 │   └── formatter.py        #   build the context string with citations
 │
 ├── llm/
@@ -189,10 +185,10 @@ A clean separation: **ingestion** prepares the data, **retrieval** finds it,
    chunks, embeds them with Gemini's embedder, and stores them in Qdrant (tagged
    by policy, with a filter index).
 2. **Per question:** the app rewrites the question if needed, **routes it to the
-   right policy**, searches Qdrant (meaning) and BM25 (keywords) **within that
-   policy**, always adds the key reference tables, formats everything with page
-   citations, and asks Gemini to answer **only** from that context — streaming
-   the reply back with citations.
+   right policy**, searches Qdrant (by meaning) **within that policy**, always
+   adds the key reference tables, formats everything with page citations, and
+   asks Gemini to answer **only** from that context — streaming the reply back
+   with citations.
 
 The result: fast, trustworthy, **document-grounded** answers about a real travel
 policy — with no model hallucination and full traceability.

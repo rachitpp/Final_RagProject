@@ -55,10 +55,19 @@ CASES = [
      "must": [r"\bb\b", r"\$?\s*200\b"]},
 
     # ---- Multi-day / multi-city totals ----
+    # We assert the per-band GRAND TOTALS, not intermediate subtotals: the grand
+    # total is the same number regardless of how the model lays out the table
+    # (per-city columns vs per-component subtotals), so it checks the arithmetic
+    # is right end-to-end without coupling the test to one presentation.
+    # Delhi=A, Jaipur=B (State capital), hotel stay (LA+BA), 3 days each:
+    #   9/10 (4000+1000)*3+(2500+750)*3=24750  7/8 (2500+800)*3+(1800+600)*3=17100
+    #   5/6  (1800+500)*3+(1200+400)*3=11700   1-4 (1000+400)*3+(700+300)*3=7200
     {"q": "How much is the entitlement for 3 days in Delhi and 3 days in Jaipur?",
-     "must": [r"19[,\s]?500", r"12[,\s]?900", r"9[,\s]?000", r"5[,\s]?100"]},
+     "must": [r"24[,\s]?750", r"17[,\s]?100", r"11[,\s]?700", r"7[,\s]?200"]},
+    # Mumbai=A (3 days) + Bangalore=A (2 days), hotel stay (LA+BA):
+    #   9/10 5000*5=25000  7/8 3300*5=16500  5/6 2300*5=11500  1-4 1400*5=7000
     {"q": "How much is the entitlement for 3 days in Mumbai and 2 days in Bangalore?",
-     "must": [r"20[,\s]?000", r"12[,\s]?500"]},
+     "must": [r"25[,\s]?000", r"16[,\s]?500", r"11[,\s]?500", r"7[,\s]?000"]},
 
     # ---- Timing rules ----
     {"q": "What boarding allowance applies to a same-day journey of 10 hours, and one of 7 hours?",
@@ -66,7 +75,7 @@ CASES = [
     {"q": "On a continuing journey, away one full day plus an extra 14 hours, how is BA/DA computed for the extra hours?",
      "must": [r"one\W+(?:full\W+)?day", r"additional"]},
     {"q": "On a residential training program where meals are provided, what LA and BA can be claimed?",
-     "must": [r"no\w*\W+(?:lodging|la)|not entitled\W+to\W+(?:any\W+)?lodging", r"50\s*%"]},
+     "must": [r"no\w*\W+(?:lodging|la)|not\W+(?:be\W+)?entitled\W+to\W+(?:any\W+)?(?:lodging|la)", r"50\s*%"]},
     {"q": "My station stay unexpectedly extends to 12 days. How does lodging change?",
      "must": [r"75\s*%", r"11th"]},
 

@@ -13,7 +13,7 @@ the document and cited to the page.
 - Reads the policy PDFs (text **and** tables) and stores them as searchable
   vectors in Qdrant Cloud.
 - For each question: routes it to the right policy, retrieves the relevant
-  chunks (keyword + meaning), guarantees the key reference tables are present,
+  chunks (semantic search), guarantees the key reference tables are present,
   and has Gemini answer **only** from that context — streamed, with citations.
 
 ---
@@ -24,7 +24,7 @@ the document and cited to the page.
 User query
   → Rewrite          resolve follow-ups using conversation history
   → Classify policy  decide Domestic vs Foreign (the single routing decision)
-  → Hybrid retrieval  BM25 keyword + vector meaning search, scoped to that policy
+  → Vector retrieval  semantic (meaning) search, scoped to that policy
   → Pin tables       always inject the city/country classification + active rate table
   → Gemini 2.5 Flash  stream a grounded, cited answer
 ```
@@ -41,15 +41,16 @@ embed → store in Qdrant** with a `policy` tag and a payload index for filterin
 | LLM | Gemini 2.5 Flash via Vertex AI |
 | Embeddings | text-embedding-004 via Vertex AI (768-dim) |
 | Vector store | Qdrant Cloud |
-| Keyword retrieval | BM25 (`rank-bm25`) |
 | PDF parsing | pdfplumber (table-aware) |
 | Orchestration | LangChain |
 | UI | Streamlit (`app.py`) |
 | Tracing | LangSmith |
 
-> There is intentionally **no reranker** — on this small, table-heavy corpus a
-> cross-encoder scored the key tables near zero and dropped them, so retrieval
-> uses BM25 + vector + guaranteed (“pinned”) reference tables instead.
+> Retrieval is deliberately kept simple: **policy-scoped vector search +
+> guaranteed (“pinned”) reference tables.** On this small, table-heavy corpus
+> an A/B run of the eval harness showed that hybrid (BM25) search, HYDE
+> query-expansion, and a cross-encoder reranker all added no answer-quality
+> gain — the reranker actively dropped the key tables — so none are used.
 
 ---
 
@@ -67,10 +68,9 @@ embed → store in Qdrant** with a `policy` tag and a payload index for filterin
 │   └── vector_store.py      # Qdrant collection + embedding + policy index
 ├── retrieval/
 │   ├── classify.py          # Trip-type / policy routing (domestic vs foreign)
-│   ├── retrievers.py        # BM25 + vector + policy-scoped hybrid retrieval
+│   ├── retrievers.py        # Policy-scoped vector (semantic) search
 │   ├── pinned.py            # Guaranteed reference tables (classification + rate)
 │   ├── rewrite.py           # Follow-up query rewriting
-│   ├── hyde.py              # Hypothetical Document Embeddings (optional, off)
 │   └── formatter.py         # Context formatting with page citations
 ├── llm/
 │   ├── models.py            # LLM + embedding model factories

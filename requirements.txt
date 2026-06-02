@@ -4,9 +4,8 @@ python-dotenv>=1.0.0
 # stChatInput). Pin to a recent line so those selectors stay valid.
 streamlit>=1.40.0
 
-# LangChain core + classic + community
+# LangChain core + text splitters
 langchain-core>=0.3.0
-langchain-community>=0.3.0
 langchain-text-splitters>=0.3.0
 
 # Vector store (Qdrant) + Gemini bindings
@@ -16,9 +15,6 @@ langchain-google-genai>=2.0.0
 
 # PDF loading (table-aware extraction)
 pdfplumber>=0.11.0
-
-# BM25 keyword retrieval
-rank-bm25>=0.2.2
 
 # Tracing
 langsmith>=0.1.0

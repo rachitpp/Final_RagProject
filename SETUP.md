@@ -114,13 +114,11 @@ pulls in each package's own dependencies automatically.
 | `python-dotenv` | Loads your secret keys from the `.env` file into the program |
 | `streamlit` | The web chat interface (`app.py`) |
 | `langchain-core` | Core building blocks — documents, prompt templates |
-| `langchain-community` | Provides the **BM25** keyword retriever |
 | `langchain-text-splitters` | Splits long documents into overlapping chunks |
 | `langchain-qdrant` | Connects LangChain to the Qdrant vector database |
 | `qdrant-client` | Talks to **Qdrant Cloud**, where the document vectors live |
 | `langchain-google-genai` | Calls **Google Gemini** (the LLM) and the embedding model |
 | `pdfplumber` | Reads text **and tables** out of your PDF |
-| `rank-bm25` | The math engine behind BM25 keyword search |
 | `langsmith` | Optional tracing — lets you inspect each step of a query |
 
 > **Note:** This project does **not** use PyTorch or sentence-transformers. All

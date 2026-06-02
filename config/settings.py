@@ -43,22 +43,14 @@ class Settings:
     qdrant_vector_size: int = 768          # text-embedding-004 -> 768 dims
 
     # --- Retrieval ---
-    # The corpus is tiny (~15 chunks). BM25 (keyword) + vector (semantic)
-    # similarity, unioned and deduped, gives high recall; the must-have
-    # reference tables are then guaranteed by pinning (see retrieval/pinned.py).
-    # No reranker: ms-marco-MiniLM scored these tabular chunks ~0.000 and any
-    # binding top_n/threshold dropped answer-bearing tables, so it was inert
-    # dead weight. Revisit a real reranker (e.g. bge-reranker) only if the
-    # corpus grows large enough that feeding most of it stops being viable.
+    # The corpus is tiny (~15 chunks). Policy-scoped vector (semantic)
+    # similarity with k=10 already recalls almost the entire policy sub-corpus;
+    # the must-have reference tables are then guaranteed by pinning (see
+    # retrieval/pinned.py). An A/B run of the eval harness showed BM25 (hybrid)
+    # and HYDE added zero answer-quality gain at this size, so neither is used.
+    # Revisit hybrid search / a reranker only if the corpus grows large enough
+    # that feeding most of it to the model stops being viable.
     vector_k: int = 10
-    bm25_k: int = 10
-
-    # --- HYDE ---
-    # Off: at ~15 chunks BM25+vector already recall almost everything, so the
-    # hypothetical-document step added an LLM call per query for ~zero recall
-    # gain. The code remains; flip this on if the corpus grows.
-    hyde_enabled: bool = False
-    hyde_max_tokens: int = 256
 
     # --- Conversation memory ---
     history_window: int = 4  # last N (user, assistant) turns kept

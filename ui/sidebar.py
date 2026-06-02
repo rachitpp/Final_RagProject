@@ -27,14 +27,13 @@ def _model_display_name() -> str:
 
 
 def _list_indexed_documents(pipeline: RAGPipeline) -> "tuple[list[dict], int]":
-    """Return (documents, total_pages) from the pipeline's BM25 index.
+    """Return (documents, total_pages) from the pipeline's document list.
 
-    The pipeline holds a single combined BM25Retriever (pipeline.bm25) whose
-    .docs list carries every chunk, each tagged with metadata {"source", "page"}
-    by the loader. We group those by source filename and count distinct pages.
+    The pipeline holds every chunk in pipeline.documents, each tagged with
+    metadata {"source", "page"} by the loader. We group those by source
+    filename and count distinct pages.
     """
-    bm25 = getattr(pipeline, "bm25", None)
-    docs = getattr(bm25, "docs", None)
+    docs = getattr(pipeline, "documents", None)
     if not isinstance(docs, list):
         return [], 0
 

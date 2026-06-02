@@ -13,7 +13,7 @@ logger = get_logger(__name__)
 # repeats the same web furniture: a "Welcome <date> Logout..." header, a
 # "Policy • Annexure • Change Password" nav strip, and a footer URL + "Page X
 # of Y" / copyright line. None of it is policy content — left in, it pollutes
-# every embedding and BM25 signal and even gets misread as a table row. The
+# every embedding and even gets misread as a table row. The
 # loader's job is to emit policy text, so we strip it here at the source.
 # ---------------------------------------------------------------------------
 _CHROME_RE = re.compile(

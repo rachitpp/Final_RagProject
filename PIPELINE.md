@@ -15,7 +15,7 @@ the code.
 ## Part 1 — The Ingestion Pipeline (run once)
 
 **Goal:** take a PDF full of policy text and tables, and store it in a form that
-can be searched by *meaning* and by *keyword*.
+can be searched by *meaning*.
 
 ```
 PDF  ─►  Load & clean  ─►  Split into chunks  ─►  Embed  ─►  Store in Qdrant
@@ -79,7 +79,7 @@ Cloud** collection called `rag_documents`, configured for **cosine similarity**
 
 It also creates a **keyword payload index on `metadata.policy`**. Qdrant Cloud
 often runs in *strict mode*, which rejects filtering on an unindexed field — so
-this index is what makes the per-policy retrieval filter (Query Step 4) actually
+this index is what makes the per-policy retrieval filter (Query Step 3) actually
 work, not just a speed-up.
 
 When this finishes, your PDFs are fully searchable. You won't run ingestion again
@@ -103,27 +103,24 @@ Question
 2. Classify      (decide Domestic vs Foreign — the single policy-routing decision)
    │
    ▼
-3. HYDE          (optional, currently OFF — richer query for vector search)
+3. Vector retrieve   semantic (meaning) search, scoped to the chosen policy
    │
    ▼
-4. Hybrid retrieve   BM25 (keywords) + Vector (meaning), BOTH scoped to the
-   │                 chosen policy  →  union & dedupe
-   ▼
-5. Pin tables    (always inject BOTH classification tables + the ACTIVE policy's rate table)
+4. Pin tables    (always inject BOTH classification tables + the ACTIVE policy's rate table)
    │
    ▼
-6. Format        (stitch chunks into one context string with [source, page] tags)
+5. Format        (stitch chunks into one context string with [source, page] tags)
    │
    ▼
-7. Gemini        (answer ONLY from that context, with the trip type supplied; streamed)
+6. Gemini        (answer ONLY from that context, with the trip type supplied; streamed)
    │
    ▼
-8. Remember      (save the turn so follow-ups make sense)
+7. Remember      (save the turn so follow-ups make sense)
 ```
 
 Everything is orchestrated by the `RAGPipeline` class in
 `pipelines/rag_pipeline.py`. It's built **once** at startup (loading the vector
-store, BM25 index, LLM, and memory) and reused for every question.
+store, LLM, and memory) and reused for every question.
 
 ### Step 1 — Rewrite the question
 **File:** `retrieval/rewrite.py`
@@ -154,36 +151,26 @@ prompt. On any failure it defaults conservatively to Domestic.
 > context removes the chance of cross-contamination — the retriever does the
 > separating, so the prompt doesn't have to.
 
-### Step 3 — HYDE (optional, currently OFF)
-**File:** `retrieval/hyde.py` · toggle: `settings.hyde_enabled` (default `False`)
-
-HYDE = **Hy**pothetical **D**ocument **E**mbeddings. The idea: instead of
-embedding the bare question, ask the LLM to *write a fake paragraph that would
-answer it* in formal policy language, then embed **that**. A richer, on-vocabulary
-query lands closer to the real policy text.
-
-It's **off** here because, on this small corpus, BM25 + vector already find
-almost everything, so HYDE added an LLM call for near-zero gain. The code stays
-ready — flip the setting on if the corpus grows.
-
-### Step 4 — Hybrid retrieval (policy-scoped)
+### Step 3 — Vector retrieval (policy-scoped)
 **File:** `retrieval/retrievers.py`
 
-Two complementary searches run, **both restricted to the policy chosen in Step 2**,
-then merged:
+A single **vector (meaning) search** runs, **restricted to the policy chosen in
+Step 2**. The question is embedded and matched against the stored chunks, filtered
+on `metadata.policy` so only the chosen policy's chunks come back. (This filter
+needs a Qdrant payload index — created at ingestion; see Part 1.) It returns up to
+`k = 10` chunks — on this ~15-chunk corpus, that's almost the entire policy
+sub-corpus.
 
-- **BM25 (keyword search)** — great for exact terms ("Category A", "DA"). Uses a
-  custom tokenizer (lowercase, strip punctuation) so `Pune.` matches `pune`. A
-  **separate BM25 index per policy** is built at startup; the matching one is used.
-- **Vector search (meaning search)** — great for paraphrases and synonyms,
-  filtered on `metadata.policy` so only the chosen policy's chunks come back.
-  (This filter needs a Qdrant payload index — created at ingestion; see Part 1.)
+> **Why not hybrid (BM25) search?** An earlier version also ran a per-policy BM25
+> keyword index and unioned its hits with the vector results. An A/B run of the
+> eval harness (with the BM25 leg disabled) scored identically — at this corpus
+> size vector search already recalls everything, and the must-have tables are
+> guaranteed by pinning (Step 4) regardless. So the keyword leg, along with HYDE
+> query-expansion and a cross-encoder reranker, was removed as measured dead
+> weight. Revisit hybrid search / a reranker if the corpus grows large enough
+> that feeding most of it to the model stops being viable.
 
-Each returns up to `k = 10` chunks. They're **unioned and de-duplicated** (by
-exact text). Keyword precision + semantic recall = high coverage, all within one
-policy.
-
-### Step 5 — Pin the reference tables
+### Step 4 — Pin the reference tables
 **File:** `retrieval/pinned.py`
 
 Almost every answer needs two kinds of lookup table: the **classification**
@@ -201,7 +188,7 @@ startup it resolves each table by a stable text signature; per query it injects:
 Retrieval owns *"is the right reference data present?"*; the prompt just looks it
 up instead of guessing.
 
-### Step 6 — Format the context
+### Step 5 — Format the context
 **File:** `retrieval/formatter.py`
 
 The chosen chunks are joined into one text block, each tagged with its origin:
@@ -220,7 +207,7 @@ Those `source, page` tags are what let Gemini cite a real section and page. The
 `page` is **1-based** (the actual PDF page number), set at ingestion — so a
 citation reads `p.2`, never `p.0`.
 
-### Step 7 — Answer with Gemini
+### Step 6 — Answer with Gemini
 **File:** `llm/prompts.py` (the `ANSWER_PROMPT`) + `llm/models.py`
 
 The context + question + the **already-decided trip type** go to
@@ -246,7 +233,7 @@ correct.
 
 The answer is **streamed token by token** so the user sees it appear live.
 
-### Step 8 — Remember the turn
+### Step 7 — Remember the turn
 **File:** `conversation/memory.py`
 
 The question and answer are stored in a small in-memory buffer that keeps the
@@ -265,16 +252,17 @@ All tunable numbers are in **`config/settings.py`**:
 | `chunk_size` | 1500 | Characters per chunk (kept large to fit whole tables) |
 | `chunk_overlap` | 80 | Shared text between neighbouring chunks |
 | `vector_k` | 10 | Chunks pulled from vector (meaning) search |
-| `bm25_k` | 10 | Chunks pulled from BM25 (keyword) search |
-| `hyde_enabled` | False | Turn the HYDE query-expansion step on/off |
 | `history_window` | 4 | Conversation turns kept for follow-ups |
 | `embedding_model` | text-embedding-004 | Vertex embedding model (768 dims) |
 | `llm_model` | gemini-2.5-flash | The answering model |
 
-> **Note:** there is intentionally **no reranker** in the current pipeline. On
-> this small, table-heavy corpus a cross-encoder reranker scored the key tables
-> near zero and dropped them, so it was removed in favour of the simpler
-> BM25 + vector + pinned-tables approach above.
+> **Note:** retrieval is intentionally just **vector search + pinned tables**.
+> Hybrid (BM25) search, HYDE query-expansion, and a cross-encoder reranker were
+> all built and then measured against the eval harness on this small,
+> table-heavy corpus — none improved answers (the reranker actively scored the
+> key tables near zero and dropped them), so all three were removed in favour of
+> the simpler approach above. Revisit them only if the corpus grows large enough
+> that feeding most of it to the model stops being viable.
 
 ---
 
