@@ -2,7 +2,6 @@ import { useState } from "react";
 import { Check, Copy } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import ThinkingIndicator from "@/components/ThinkingIndicator";
-import Sources from "@/components/Sources";
 import type { Message } from "@/hooks/useChatStream";
 
 export default function ChatMessage({
@@ -22,7 +21,7 @@ export default function ChatMessage({
 
   if (message.role === "user") {
     return (
-      <div className="flex animate-user-in flex-col items-end pt-5">
+      <div className="flex animate-user-in flex-col items-end pt-5 pb-5">
         <div className="mb-1.5 font-sans text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-ink-soft">
           ◉&nbsp;&nbsp;You
         </div>
@@ -46,7 +45,7 @@ export default function ChatMessage({
       {empty && isStreaming ? <ThinkingIndicator /> : <Markdown content={display} />}
 
       {!empty && !isStreaming && (
-        <div className="mt-3 flex items-start gap-4">
+        <div className="mt-3">
           <button
             type="button"
             onClick={copy}
@@ -56,7 +55,6 @@ export default function ChatMessage({
             {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
             {copied ? "Copied" : "Copy"}
           </button>
-          <Sources content={message.content} />
         </div>
       )}
     </div>

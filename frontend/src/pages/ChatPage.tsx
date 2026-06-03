@@ -78,9 +78,11 @@ export default function ChatPage() {
     }
   };
 
+  // Clicking a starter question fires the search immediately — no detour
+  // through the textarea / an extra Enter press.
   const pickStarter = (q: string) => {
-    setInput(q);
-    taRef.current?.focus();
+    if (isStreaming) return;
+    send(q);
   };
 
   return (
@@ -139,7 +141,7 @@ export default function ChatPage() {
                 onChange={(e) => setInput(e.target.value)}
                 onKeyDown={onKeyDown}
                 placeholder="Ask about the travel policy…  (Shift+Enter for a new line)"
-                className="max-h-[200px] flex-1 resize-none bg-transparent px-3 py-2 font-sans text-[0.92rem] text-ink outline-none placeholder:text-ink-faint"
+                className="no-scrollbar max-h-[200px] flex-1 resize-none bg-transparent px-3 py-2 font-sans text-[0.92rem] text-ink outline-none placeholder:text-ink-faint"
               />
               {isStreaming ? (
                 <button

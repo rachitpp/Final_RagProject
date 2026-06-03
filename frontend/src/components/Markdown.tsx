@@ -84,9 +84,11 @@ const components: Components = {
     </a>
   ),
   table: ({ children }) => (
-    <div className="my-4 overflow-x-auto rounded-md border border-rule-strong">
-      <table className="w-full border-collapse font-sans text-[0.82rem] tabular-nums">
-
+    // w-fit lets the bordered box shrink-wrap the table so its width tracks the
+    // column count; max-w-full + overflow-x-auto caps a wide table and scrolls
+    // it instead of overflowing the column.
+    <div className="my-4 w-fit max-w-full overflow-x-auto rounded-md border border-rule-strong">
+      <table className="w-auto border-collapse font-sans text-[0.82rem] tabular-nums">
         {children}
       </table>
     </div>

@@ -65,30 +65,37 @@
    them via var(), so the whole UI flips with this one block.
    ============================================================ */
 html.light {
-  --paper: #f5f0e6;
-  --paper-2: #efe9dc;
-  --paper-3: #e8e1d1;
-  --paper-4: #ece5d6;
-  --paper-5: #ddd4c2;
+  /* Warm parchment, retuned for legibility. The old light values sat in too
+     narrow a band — raised surfaces barely separated from the canvas and the
+     hairlines all but vanished, so the eye had to work. This mirrors the dark
+     theme's logic instead: raised surfaces (bubble, composer, code, table
+     head) read as near-white cards that LIFT off a warm-cream canvas, the
+     rules are dark enough to actually draw structure, and the muted/faint inks
+     are deepened so every label, count and placeholder reads at a glance. */
+  --paper: #f1e9d7; /* canvas — warm cream */
+  --paper-2: #e7dec8; /* sidebar — gently recessed rail */
+  --paper-3: #ddd1b8; /* hover — darkens, so hovers clearly register */
+  --paper-4: #fffdf7; /* raised: bubble, composer, code, table head — near-white, lifts */
+  --paper-5: #d3c6aa; /* deepest — disabled / pressed */
 
-  --ink: #2b2722;
-  --ink-soft: #4b443a;
-  --ink-muted: #6d6457;
-  --ink-faint: #948b7c;
+  --ink: #211e19; /* primary text — crisp near-black brown */
+  --ink-soft: #413a30; /* secondary */
+  --ink-muted: #5b5244; /* muted — deepened for legibility */
+  --ink-faint: #79705f; /* faint — deepened so labels & placeholders read */
 
-  --rule: #e3dbcb;
-  --rule-strong: #d2c8b5;
+  --rule: #cfc0a5; /* hairlines — visible now */
+  --rule-strong: #bdae90; /* strong borders — clearly defined */
 
-  --gold: #9a7b43;
-  --gold-strong: #7a5d2b;
-  --gold-bg: rgba(154, 123, 67, 0.1);
-  --gold-border: rgba(154, 123, 67, 0.3);
-  --sage: #6f8a57;
-  --focus-halo: rgba(154, 123, 67, 0.22);
-  --destructive: #c0473a;
+  --gold: #8c6c34; /* accent — deeper, holds contrast on cream */
+  --gold-strong: #664d1f; /* editorial lede / strong accent */
+  --gold-bg: rgba(140, 108, 52, 0.1);
+  --gold-border: rgba(140, 108, 52, 0.32);
+  --sage: #5e7847;
+  --focus-halo: rgba(140, 108, 52, 0.25);
+  --destructive: #b53f2e;
 
   --watermark: #2b2722;
-  --watermark-opacity: 0.04;
+  --watermark-opacity: 0.05;
 }
 
 @theme inline {
@@ -197,6 +204,15 @@ html.light {
   ::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
 }
 
+/* Hide the scrollbar (but keep scrolling) — used on the composer textarea so a
+   long query doesn't sprout a scrollbar inside the rounded input. */
+.no-scrollbar {
+  scrollbar-width: none; /* Firefox */
+}
+.no-scrollbar::-webkit-scrollbar {
+  display: none; /* Chrome / Safari / Edge */
+}
+
 /* Giant ambient brand watermark, bottom-right. */
 .brand-watermark {
   position: fixed;
@@ -252,4 +268,17 @@ html.light {
   letter-spacing: -0.006em;
   color: var(--gold-strong);
   margin-bottom: 0.9rem;
+}
+
+/* Sonner toasts — by default every toast stretches to a fixed 356px, so a
+   short note like "New chat started." looks stranded in a wide, empty box.
+   Let the toast hug its content (capped at the default width) and pin it to
+   the right edge to match the bottom-right placement. Tighter padding keeps
+   it in scale with the rest of the compact UI. */
+[data-sonner-toast][data-styled="true"] {
+  width: fit-content;
+  max-width: var(--width);
+  right: 0;
+  left: auto;
+  padding: 11px 14px;
 }
