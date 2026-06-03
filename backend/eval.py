@@ -103,7 +103,8 @@ def main():
     passed = 0
     failures = []
     for i, case in enumerate(CASES, 1):
-        pipe.memory.clear()
+        # Each gold case is independent: no history passed -> no follow-up
+        # rewriting (the pipeline is stateless, so there's nothing to clear).
         ans = _norm("".join(pipe.stream_answer(case["q"])))
         miss = [p for p in case["must"] if not re.search(p, ans, re.I)]
         bad = [p for p in case.get("forbid", []) if re.search(p, ans, re.I)]

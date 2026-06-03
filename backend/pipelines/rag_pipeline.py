@@ -13,7 +13,6 @@ from retrieval.classify import classify_trip_type
 from retrieval.formatter import format_docs
 from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
-from conversation.memory import ConversationMemory
 from llm.models import get_llm
 from llm.prompts import ANSWER_PROMPT
 from config.settings import settings
@@ -41,7 +40,12 @@ def _trip_label(trip_type: str, assumed: bool) -> str:
 class RAGPipeline:
     """
     End-to-end retrieval pipeline. One class, built once, reused.
-    Holds the heavy objects (vector store, BM25 indexes, LLM, memory).
+    Holds the heavy objects (vector store, BM25 indexes, LLM, pinned tables).
+
+    STATELESS per conversation: it holds no chat history. Each call receives the
+    relevant history as an argument, so one shared instance can safely serve many
+    concurrent conversations. Storage is owned by the caller (conversation/store.py
+    for the web layer; main.py for the CLI).
 
     Flow: rewrite -> classify policy -> policy-scoped BM25 + vector (union,
     dedup) -> pin reference tables (both classifications + active rate) -> LLM.
@@ -60,7 +64,6 @@ class RAGPipeline:
         # Per-policy indexes — used for policy-scoped keyword retrieval.
         self.bm25_by_policy = build_bm25_by_policy(store)
         self.llm = get_llm(streaming=True)
-        self.memory = ConversationMemory(max_turns=settings.history_window)
         # Reference tables resolved ONCE at startup. select_pinned() then picks
         # the right subset per query based on trip type. See retrieval/pinned.py.
         self.pinned = resolve_pinned(_scroll_all_docs(store))
@@ -77,11 +80,11 @@ class RAGPipeline:
         name="rag_pipeline.retrieve",
         metadata={"retriever": "classify+bm25+vector-similarity+pinned-tables"},
     )
-    def _retrieve(self, query: str) -> tuple[list, str, str, bool]:
+    def _retrieve(self, query: str, history: list) -> tuple[list, str, str, bool]:
         """Rewrite → classify policy → policy-scoped hybrid retrieve → pin
         reference tables. Returns (context_docs, rewritten_query, trip_type,
         assumed)."""
-        rewritten = rewrite_query(query, self.memory.turns())
+        rewritten = rewrite_query(query, history)
         trip_type, assumed = classify_trip_type(rewritten)
         vector_query = generate_hyde(rewritten) if settings.hyde_enabled else rewritten
         candidates = hybrid_retrieve(
@@ -94,9 +97,18 @@ class RAGPipeline:
         # Guarantee the reference tables are present regardless of ranking.
         return self._merge_pinned(candidates, trip_type), rewritten, trip_type, assumed
 
-    def stream_answer(self, query: str) -> Iterator[str]:
-        """Run the full pipeline and yield the answer token-by-token."""
-        context_docs, rewritten, trip_type, assumed = self._retrieve(query)
+    def stream_answer(
+        self, query: str, history: list | None = None
+    ) -> Iterator[str]:
+        """Run the full pipeline and yield the answer token-by-token.
+
+        `history` is a list of prior (user, assistant) turns, used ONLY to
+        resolve follow-ups during rewrite. The pipeline stores nothing; the
+        caller appends the completed turn to its own memory.
+        """
+        context_docs, rewritten, trip_type, assumed = self._retrieve(
+            query, history or []
+        )
 
         context = format_docs(context_docs)
         messages = ANSWER_PROMPT.format_messages(
@@ -105,11 +117,7 @@ class RAGPipeline:
             trip_type=_trip_label(trip_type, assumed),
         )
 
-        collected: list[str] = []
         for chunk in self.llm.stream(messages):
             piece = getattr(chunk, "content", None) or ""
             if piece:
-                collected.append(piece)
                 yield piece
-
-        self.memory.add(query, "".join(collected))

@@ -1,0 +1,255 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+@import "@fontsource-variable/source-serif-4";
+@import "@fontsource-variable/geist";
+
+/* ============================================================
+   Ink & Parchment — a warm, dark, editorial theme.
+   Warm near-black "paper" + warm off-white "ink", with a single
+   rationed parchment-gold accent reserved for citations & links.
+   ============================================================ */
+:root {
+  --paper: #1c1b18; /* canvas */
+  --paper-2: #151412; /* sidebar */
+  --paper-3: #262420; /* hover */
+  --paper-4: #2c2a25; /* raised: user bubble, composer */
+  --paper-5: #3a372f;
+
+  --ink: #efe9e1; /* primary text */
+  --ink-soft: #d7cfc3;
+  --ink-muted: #b3aa9c;
+  --ink-faint: #8b8273;
+
+  --rule: #2a2824; /* hairlines */
+  --rule-strong: #3a372f;
+
+  --gold: #d3b98c; /* parchment gold — accent */
+  --gold-strong: #f3e6cf; /* editorial lede / bright accent */
+  --gold-bg: rgba(211, 185, 140, 0.09);
+  --gold-border: rgba(211, 185, 140, 0.26);
+  --sage: #8aa678; /* calm "ready" status */
+  --focus-halo: rgba(211, 185, 140, 0.2);
+
+  --ease: cubic-bezier(0.22, 1, 0.36, 1);
+  --ease-soft: cubic-bezier(0.16, 1, 0.3, 1);
+
+  /* shadcn-style semantic tokens, remapped to the warm palette so the
+     standard utilities (bg-background, border-border, ring, …) stay valid. */
+  --radius: 0.75rem;
+  --background: var(--paper);
+  --foreground: var(--ink);
+  --card: #1f1d1a;
+  --card-foreground: var(--ink);
+  --popover: var(--paper-2);
+  --popover-foreground: var(--ink);
+  --primary: var(--ink);
+  --primary-foreground: var(--paper);
+  --secondary: var(--paper-3);
+  --secondary-foreground: var(--ink);
+  --muted: var(--paper-3);
+  --muted-foreground: var(--ink-muted);
+  --accent: var(--paper-3);
+  --accent-foreground: var(--ink);
+  --destructive: #ef6b5e;
+  --border: var(--rule);
+  --input: var(--rule-strong);
+  --ring: var(--gold);
+
+  --watermark: #ffffff;
+  --watermark-opacity: 0.02;
+}
+
+/* ============================================================
+   Light "Parchment" mode — warm cream paper, dark ink. Only the
+   base tokens are overridden; every derived/semantic token pulls
+   them via var(), so the whole UI flips with this one block.
+   ============================================================ */
+html.light {
+  --paper: #f5f0e6;
+  --paper-2: #efe9dc;
+  --paper-3: #e8e1d1;
+  --paper-4: #ece5d6;
+  --paper-5: #ddd4c2;
+
+  --ink: #2b2722;
+  --ink-soft: #4b443a;
+  --ink-muted: #6d6457;
+  --ink-faint: #948b7c;
+
+  --rule: #e3dbcb;
+  --rule-strong: #d2c8b5;
+
+  --gold: #9a7b43;
+  --gold-strong: #7a5d2b;
+  --gold-bg: rgba(154, 123, 67, 0.1);
+  --gold-border: rgba(154, 123, 67, 0.3);
+  --sage: #6f8a57;
+  --focus-halo: rgba(154, 123, 67, 0.22);
+  --destructive: #c0473a;
+
+  --watermark: #2b2722;
+  --watermark-opacity: 0.04;
+}
+
+@theme inline {
+  --font-sans:
+    "Geist Variable", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif:
+    "Source Serif 4 Variable", Charter, "Iowan Old Style", Georgia, serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, "Cascadia Code", monospace;
+
+  /* custom palette → utilities (bg-paper, text-ink, text-gold, border-rule…) */
+  --color-paper: var(--paper);
+  --color-paper-2: var(--paper-2);
+  --color-paper-3: var(--paper-3);
+  --color-paper-4: var(--paper-4);
+  --color-paper-5: var(--paper-5);
+  --color-ink: var(--ink);
+  --color-ink-soft: var(--ink-soft);
+  --color-ink-muted: var(--ink-muted);
+  --color-ink-faint: var(--ink-faint);
+  --color-rule: var(--rule);
+  --color-rule-strong: var(--rule-strong);
+  --color-gold: var(--gold);
+  --color-gold-strong: var(--gold-strong);
+  --color-sage: var(--sage);
+
+  /* semantic tokens */
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-card: var(--card);
+  --color-card-foreground: var(--card-foreground);
+  --color-popover: var(--popover);
+  --color-popover-foreground: var(--popover-foreground);
+  --color-primary: var(--primary);
+  --color-primary-foreground: var(--primary-foreground);
+  --color-secondary: var(--secondary);
+  --color-secondary-foreground: var(--secondary-foreground);
+  --color-muted: var(--muted);
+  --color-muted-foreground: var(--muted-foreground);
+  --color-accent: var(--accent);
+  --color-accent-foreground: var(--accent-foreground);
+  --color-destructive: var(--destructive);
+  --color-border: var(--border);
+  --color-input: var(--input);
+  --color-ring: var(--ring);
+
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+
+  --animate-rise: rise 620ms var(--ease) both;
+  --animate-user-in: user-in 600ms var(--ease-soft) both;
+  --animate-msg-in: msg-in 640ms var(--ease-soft) both;
+}
+
+@keyframes rise {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes user-in {
+  from { opacity: 0; transform: translateY(12px) scale(0.96); }
+  to { opacity: 1; transform: translateY(0) scale(1); }
+}
+@keyframes msg-in {
+  from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes glyph-breathe {
+  0%, 100% { opacity: 0.32; transform: scale(0.94); }
+  50% { opacity: 0.85; transform: scale(1); }
+}
+@keyframes status-pulse {
+  0% { box-shadow: 0 0 0 0 rgba(138, 166, 120, 0.45); }
+  70% { box-shadow: 0 0 0 5px rgba(138, 166, 120, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(138, 166, 120, 0); }
+}
+@keyframes stage-cycle {
+  0% { opacity: 0; transform: translateY(4px); }
+  5% { opacity: 1; transform: translateY(0); }
+  28% { opacity: 1; transform: translateY(0); }
+  33% { opacity: 0; transform: translateY(-4px); }
+  100% { opacity: 0; }
+}
+
+@layer base {
+  * {
+    @apply border-border;
+    scrollbar-width: thin;
+    scrollbar-color: var(--rule-strong) transparent;
+  }
+  body {
+    @apply bg-paper text-ink font-serif antialiased;
+    margin: 0;
+  }
+  ::selection {
+    background: var(--gold-bg);
+    color: var(--gold-strong);
+  }
+  ::-webkit-scrollbar { width: 11px; height: 11px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb {
+    background-color: var(--rule-strong);
+    border-radius: 999px;
+    border: 3px solid transparent;
+    background-clip: padding-box;
+  }
+  ::-webkit-scrollbar-thumb:hover { background-color: var(--ink-faint); }
+}
+
+/* Giant ambient brand watermark, bottom-right. */
+.brand-watermark {
+  position: fixed;
+  right: -2.5rem;
+  bottom: -3.5rem;
+  font-size: 24rem;
+  line-height: 1;
+  color: var(--watermark);
+  opacity: var(--watermark-opacity);
+  pointer-events: none;
+  user-select: none;
+  z-index: 0;
+}
+
+/* Softly-breathing brand glyph (the "thinking" indicator). */
+.glyph-breathe {
+  animation: glyph-breathe 1.8s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Calm sage "ready" status dot. */
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--sage);
+  animation: status-pulse 2.6s cubic-bezier(0.4, 0, 0.6, 1) infinite;
+}
+
+/* Rotating thinking stages — exactly one phase visible at a time. */
+.thinking-stages {
+  position: relative;
+  display: inline-block;
+  min-width: 15ch;
+  height: 1.4em;
+}
+.thinking-stages .stage {
+  position: absolute;
+  left: 0;
+  top: 0;
+  white-space: nowrap;
+  opacity: 0;
+  color: var(--ink-soft);
+  animation: stage-cycle 4.2s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+.thinking-stages .stage-2 { animation-delay: 1.4s; }
+.thinking-stages .stage-3 { animation-delay: 2.8s; }
+
+/* Editorial lede — the first paragraph of an assistant answer reads larger,
+   brighter and tighter than the body, giving each turn a typographic anchor. */
+.assistant-prose > p:first-child {
+  font-size: 1.02rem;
+  line-height: 1.6;
+  letter-spacing: -0.006em;
+  color: var(--gold-strong);
+  margin-bottom: 0.9rem;
+}
