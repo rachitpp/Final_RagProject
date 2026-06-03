@@ -1,5 +1,7 @@
+import json
 from typing import Iterator
 from langsmith import traceable
+from langchain_core.messages import ToolMessage
 
 from ingestion.vector_store import load_vector_store
 from retrieval.retrievers import (
@@ -15,10 +17,15 @@ from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
 from llm.models import get_llm
 from llm.prompts import ANSWER_PROMPT
+from llm.tools import compute_entitlement
 from config.settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+# The model may need one round to call the calculator and another to write the
+# answer; a few rounds is ample headroom, bounded so it can't loop forever.
+_MAX_TOOL_ROUNDS = 4
 
 
 def _trip_label(trip_type: str, assumed: bool) -> str:
@@ -54,6 +61,11 @@ class RAGPipeline:
     decided once (classify_trip_type) and that single decision drives the body
     filter, which rate table is pinned, and the prompt's grounding line — so
     they can never disagree.
+
+    Arithmetic is owned by CODE, not the model: it reads the rates from the
+    retrieved context and calls the `compute_entitlement` tool, which totals
+    them exactly — so a multi-day / multi-city sum can't be miscalculated.
+    See llm/tools.py.
     """
 
     def __init__(self) -> None:
@@ -63,11 +75,25 @@ class RAGPipeline:
         self.bm25 = build_bm25_retriever(store)
         # Per-policy indexes — used for policy-scoped keyword retrieval.
         self.bm25_by_policy = build_bm25_by_policy(store)
-        self.llm = get_llm(streaming=True)
+        # Bind the calculator so the model offloads every total to exact code
+        # (llm/tools.py) — code does the math, the model does the language.
+        self._tools = {compute_entitlement.name: compute_entitlement}
+        self.llm = get_llm(streaming=True).bind_tools([compute_entitlement])
         # Reference tables resolved ONCE at startup. select_pinned() then picks
         # the right subset per query based on trip type. See retrieval/pinned.py.
         self.pinned = resolve_pinned(_scroll_all_docs(store))
         logger.info("RAG pipeline initialized.")
+
+    def _run_tool(self, call: dict) -> str:
+        """Execute one tool call and return its result as a JSON string."""
+        tool = self._tools.get(call["name"])
+        if tool is None:
+            return json.dumps({"error": f"unknown tool {call['name']!r}"})
+        try:
+            return json.dumps(tool.invoke(call["args"]), default=str)
+        except Exception as e:
+            logger.warning(f"Tool {call['name']} failed: {e!r}")
+            return json.dumps({"error": str(e)})
 
     def _merge_pinned(self, kept: list, trip_type: str) -> list:
         """Prepend the pinned reference tables for this trip type, deduped
@@ -105,6 +131,10 @@ class RAGPipeline:
         `history` is a list of prior (user, assistant) turns, used ONLY to
         resolve follow-ups during rewrite. The pipeline stores nothing; the
         caller appends the completed turn to its own memory.
+
+        If the model calls the calculator, we run it, feed the exact results
+        back, and stream the next round — so tool rounds stay invisible and
+        only the final prose reaches the user.
         """
         context_docs, rewritten, trip_type, assumed = self._retrieve(
             query, history or []
@@ -117,7 +147,26 @@ class RAGPipeline:
             trip_type=_trip_label(trip_type, assumed),
         )
 
-        for chunk in self.llm.stream(messages):
-            piece = getattr(chunk, "content", None) or ""
-            if piece:
-                yield piece
+        for _ in range(_MAX_TOOL_ROUNDS):
+            round_pieces: list[str] = []
+            gathered = None
+            for chunk in self.llm.stream(messages):
+                piece = getattr(chunk, "content", None) or ""
+                if piece:
+                    round_pieces.append(piece)
+                gathered = chunk if gathered is None else gathered + chunk
+
+            tool_calls = getattr(gathered, "tool_calls", None) if gathered else None
+            if not tool_calls:
+                # Final round — no tool requested, so stream the answer out.
+                for piece in round_pieces:
+                    yield piece
+                break
+
+            # Tool round: record the model's request + each result, then loop.
+            messages.append(gathered)
+            for call in tool_calls:
+                messages.append(ToolMessage(
+                    content=self._run_tool(call),
+                    tool_call_id=call["id"],
+                ))
