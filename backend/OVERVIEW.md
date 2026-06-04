@@ -51,7 +51,8 @@ in a new PDF without retraining anything.
 | **Keyword search** | **BM25** (`rank-bm25`) | Classic exact-term search |
 | **Framework** | **LangChain** | Glue between models, retrievers, and the DB |
 | **PDF parsing** | **pdfplumber** | Extracts text *and tables* from the PDF |
-| **Web UI** | **Streamlit** | The chat interface |
+| **API** | **FastAPI** | Streaming `/chat` endpoint the frontend calls |
+| **Web UI** | **React + Vite** (see `../frontend/`) | The chat interface |
 | **Tracing** | **LangSmith** | Lets you inspect every step of a query |
 | **Language** | **Python 3.13** | — |
 
@@ -148,7 +149,6 @@ an answer came out the way it did.
 Final_RagProject/
 ├── create_db.py            # Run once: build the vector database from the PDF
 ├── main.py                 # Command-line chat
-├── app.py                  # Streamlit web chat
 │
 ├── config/settings.py      # All tunable settings in one place
 │
@@ -169,17 +169,19 @@ Final_RagProject/
 │   ├── models.py           # Gemini + embedding model setup
 │   └── prompts.py          # The reasoning prompts (no policy data inside)
 │
-├── conversation/memory.py  # Short conversation history
+├── conversation/           # Short conversation history
+│   ├── memory.py           #   sliding-window buffer
+│   └── store.py            #   per-conversation store (keyed by id)
 ├── pipelines/              # Orchestration: ties the steps together
 │   ├── ingestion_pipeline.py
 │   └── rag_pipeline.py     # The main RAGPipeline class
 │
-├── ui/                     # Streamlit UI logic (rendering, sidebar, behaviours)
-└── styles/                 # The UI's CSS
+└── api/                    # FastAPI service (streaming /chat, /reset, /library)
 ```
 
 A clean separation: **ingestion** prepares the data, **retrieval** finds it,
-**llm** reasons over it, **pipelines** orchestrate, and **ui** presents it.
+**llm** reasons over it, **pipelines** orchestrate, and **api** serves it to the
+React frontend (`../frontend/`).
 
 ---
 

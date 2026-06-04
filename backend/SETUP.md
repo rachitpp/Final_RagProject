@@ -112,7 +112,8 @@ pulls in each package's own dependencies automatically.
 | Package | What it does in this project |
 |---|---|
 | `python-dotenv` | Loads your secret keys from the `.env` file into the program |
-| `streamlit` | The web chat interface (`app.py`) |
+| `fastapi` + `uvicorn` | The API server the React frontend calls (`api/`) |
+| `sse-starlette` | Streaming the answer back token by token |
 | `langchain-core` | Core building blocks — documents, prompt templates |
 | `langchain-community` | Provides the **BM25** keyword retriever |
 | `langchain-text-splitters` | Splits long documents into overlapping chunks |
@@ -163,13 +164,13 @@ Re-run it only when the PDF changes. (See `PIPELINE.md` for what happens inside.
 
 **Then start the assistant** — pick one:
 ```powershell
-python main.py                  # command-line chat
-python -m streamlit run app.py  # web interface
+python main.py                                      # command-line chat
+python -m uvicorn api.main:app --reload --port 8000 # API for the web frontend
 ```
 
-> **`streamlit` "not recognized" error?** Use `python -m streamlit run app.py`.
-> Running it as a module avoids a Windows PATH issue where the `streamlit`
-> shortcut isn't found.
+> The web interface is the **React app in `../frontend/`** — start the API above,
+> then run `npm run dev` in the frontend folder (see the root `INSTALL.md`). The
+> API serves `/chat`, `/reset`, and `/library`.
 
 ---
 
@@ -179,7 +180,7 @@ python -m streamlit run app.py  # web interface
 |---|---|
 | `Activate.ps1 cannot be loaded` | Run the `Set-ExecutionPolicy` command in step 3 |
 | `ModuleNotFoundError` after install | The venv isn't activated — look for `(venv)` in your prompt |
-| `streamlit is not recognized` | Use `python -m streamlit run app.py` |
+| `uvicorn is not recognized` | Use `python -m uvicorn api.main:app` |
 | `DefaultCredentialsError` (Google) | `.env` is missing or the GCP key path is wrong |
 | `getaddrinfo failed` (Qdrant) | Network/DNS hiccup — check internet, then retry |
 

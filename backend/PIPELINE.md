@@ -4,8 +4,9 @@ This project has **two** pipelines:
 
 1. **Ingestion** — runs once (via `create_db.py`). Turns your PDF into searchable
    vectors stored in Qdrant.
-2. **Query** — runs on every question (via `main.py` or `app.py`). Finds the
-   right pieces of the PDF and asks Gemini to answer from them.
+2. **Query** — runs on every question (via `main.py` or the FastAPI `/chat`
+   endpoint in `api/`). Finds the right pieces of the PDF and asks Gemini to
+   answer from them.
 
 Below, each stage names the exact file it lives in, so you can follow along in
 the code.

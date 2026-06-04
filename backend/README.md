@@ -44,7 +44,8 @@ embed → store in Qdrant** with a `policy` tag and a payload index for filterin
 | Keyword retrieval | BM25 (`rank-bm25`) |
 | PDF parsing | pdfplumber (table-aware) |
 | Orchestration | LangChain |
-| UI | Streamlit (`app.py`) |
+| API | FastAPI (`api/`) — streaming `/chat` endpoint |
+| Web UI | React + Vite frontend (see `../frontend/`) |
 | Tracing | LangSmith |
 
 > There is intentionally **no reranker** — on this small, table-heavy corpus a
@@ -60,7 +61,8 @@ embed → store in Qdrant** with a `policy` tag and a payload index for filterin
 ├── config/
 │   └── settings.py          # Central config — all tuneable parameters
 ├── conversation/
-│   └── memory.py            # Sliding-window conversation memory
+│   ├── memory.py            # Sliding-window conversation memory
+│   └── store.py             # Per-conversation memory store (keyed by id)
 ├── ingestion/
 │   ├── loader.py            # Table-aware PDF loading + cleaning (pdfplumber)
 │   ├── splitter.py          # Recursive text splitting
@@ -78,11 +80,13 @@ embed → store in Qdrant** with a `policy` tag and a payload index for filterin
 ├── pipelines/
 │   ├── ingestion_pipeline.py
 │   └── rag_pipeline.py      # Main RAGPipeline class
-├── ui/                      # Streamlit UI (render, sidebar, behaviours)
-├── styles/                  # UI CSS
+├── api/                     # FastAPI service (streaming /chat, /reset, /library)
+│   ├── main.py              #   app entry — builds the pipeline once (lifespan)
+│   ├── deps.py              #   shared dependencies
+│   ├── schemas.py           #   request/response models
+│   └── routes/             #   chat, health, meta endpoints
 ├── utils/
 │   └── logger.py
-├── app.py                   # Streamlit web app
 ├── main.py                  # Interactive CLI query loop
 ├── create_db.py             # Run once to ingest PDFs into Qdrant
 ├── eval.py                  # Evaluation harness

@@ -1,7 +1,7 @@
 """Metadata for the UI — the indexed-document Library and the active model.
 
-Mirrors the old Streamlit sidebar: groups the pipeline's BM25 docs by source
-filename and counts distinct pages so the frontend can show "what's indexed".
+Groups the pipeline's BM25 docs by source filename and counts distinct pages so
+the frontend's sidebar can show "what's indexed".
 """
 from fastapi import APIRouter, Depends
 
