@@ -45,29 +45,33 @@ Credentials in `backend/.env`. Full setup: [`INSTALL.md`](INSTALL.md), `backend/
   agreed design decisions for the next milestone (auth, band-aware answers, leave
   PDF, the router). Read this before building any of it.
 
-## Next milestone — auth + band-aware answers + leave PDF
+## Current milestone — auth + band-aware answers
 
-Login → JWT → server-side band lookup → auto-scope every answer to the user's
-band; add the leave policy to the corpus; route across the multi-domain corpus.
-**Full decisions in [`docs/AUTH_PERSONALIZATION_DESIGN.md`](docs/AUTH_PERSONALIZATION_DESIGN.md)** — the load-bearing ones:
+> **Piece B (leave PDF + multi-domain router) is DONE.** The registry, scopes,
+> per-scope BM25, structured router, `compute_leave_ledger`, leave prompts — all
+> built and working. The docs that called this "future work" are stale.
+>
+> **Piece A (auth + band injection) is what remains.** Full session notes and
+> step-by-step build order in [`docs/HANDOFF.md`](docs/HANDOFF.md) — read that
+> before starting work.
 
-- **Two stores:** vector DB = policy *knowledge* (searched by meaning); relational
-  DB = *identity* (looked up by `employee_id`). **Never embed the Excel/roster** —
-  it's a keyed lookup injected into the prompt, not a vector.
-- **This is personalization, not access control** — everyone may read every doc;
-  the band only picks which row of the rate table to compute. So **no per-chunk
-  ACLs.**
-- **User provides only `employee_id` + password.** Band/grade are
-  **server-authoritative from Excel**, looked up per request; the **JWT carries
-  only `sub`** (never the band).
-- **Excel → `users` table; import, don't drop-reload** (a rebuild would wipe
-  `password_hash`). Band values must match the policy's labels (e.g. `9/10`).
-- **Add `bcrypt`/`passlib`** — the one auth dep not yet pinned (PyJWT, SQLAlchemy,
-  openpyxl, pandas already are).
-- **Registry, not filename-sniffing:** a config manifest tags each PDF with a
-  `domain`; **add `domain`, keep `policy`.** Retrieval keys on a *scope*
-  (`domestic | foreign | leave`) — fixes the BM25 `if not policy: continue` drop bug.
-- **Router = one structured classify call** → `{scopes, trip_type}`; gate
-  pinning/calculator/prompt to travel-only scopes.
-- **Open question:** the "grade drives leave" split is unverified — confirm against
-  the real `.xlsx` + leave PDF before coding.
+### What's left to build (Piece A only)
+
+Login → JWT → server-side band lookup → auto-scope every travel answer to the
+user's band. The app currently answers "for every band" because it has no idea
+who is asking. Auth fixes that.
+
+**Decisions already locked:**
+
+- **Excel sheet** at `backend/data/` — `Band` column must be a number **1–10**
+  (NOT letter grades). `Email` and `Date of Joining` columns are required.
+  See [`docs/HANDOFF.md`](docs/HANDOFF.md) for the full schema.
+- **Database: SQLite** (`backend/data/app.db`) via SQLAlchemy (already pinned).
+  Setting: `database_url` in `config/settings.py`.
+- **User provides only `employee_id` + password at login.** Band is
+  **server-authoritative** — looked up from SQLite per request, never typed.
+  JWT carries only `sub` (never the band).
+- **Excel → `users` table via upsert** — never drop-reload (would wipe
+  `password_hash`).
+- **Add `passlib[bcrypt]`** — the one auth dep not yet in `requirements.txt`.
+- **Full design decisions** in [`docs/AUTH_PERSONALIZATION_DESIGN.md`](docs/AUTH_PERSONALIZATION_DESIGN.md).
