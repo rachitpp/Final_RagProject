@@ -1,0 +1,43 @@
+name: React Doctor
+
+# Scans the frontend on every PR that touches it, plus pushes to master.
+# Reports the health score and per-rule findings in the Actions log so new
+# PRs stay clean while existing issues are paid down incrementally.
+on:
+  pull_request:
+    paths:
+      - "frontend/**"
+      - ".github/workflows/react-doctor.yml"
+  push:
+    branches: [master]
+    paths:
+      - "frontend/**"
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: frontend
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # full history so --diff can compare against the base
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+
+      - run: npm ci
+
+      # On PRs, scan only what changed (--diff) so the gate focuses on new
+      # issues; on push to master, scan the whole frontend.
+      - name: Run React Doctor
+        run: |
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            npx react-doctor@latest --verbose --diff
+          else
+            npx react-doctor@latest --verbose
+          fi

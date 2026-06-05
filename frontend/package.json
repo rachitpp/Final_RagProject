@@ -7,14 +7,13 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "lint": "eslint .",
-    "preview": "vite preview"
+    "preview": "vite preview",
+    "doctor": "npx react-doctor@latest"
   },
   "dependencies": {
-    "@ai-sdk/react": "^3.0.197",
     "@fontsource-variable/geist": "^5.2.9",
     "@fontsource-variable/source-serif-4": "^5.2.9",
     "@tailwindcss/vite": "^4.3.0",
-    "ai": "^6.0.195",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.17.0",
@@ -24,7 +23,6 @@
     "react-markdown": "^10.1.0",
     "react-router-dom": "^7.16.0",
     "remark-gfm": "^4.0.1",
-    "shadcn": "^4.10.0",
     "sonner": "^2.0.7",
     "tailwind-merge": "^3.6.0",
     "tailwindcss": "^4.3.0",
@@ -40,6 +38,8 @@
     "eslint-plugin-react-hooks": "^7.1.1",
     "eslint-plugin-react-refresh": "^0.5.2",
     "globals": "^17.6.0",
+    "react-doctor": "^0.3.0",
+    "shadcn": "^4.10.0",
     "typescript": "~6.0.2",
     "typescript-eslint": "^8.59.2",
     "vite": "^8.0.12"

@@ -67,15 +67,15 @@ def resolve_pinned(all_docs: List[Document]) -> Dict[str, Document]:
 def select_pinned(resolved: Dict[str, Document], trip_type: str) -> List[Document]:
     """
     Choose which reference tables to inject for this trip type:
-      - BOTH classification tables (active policy first, then the other as a
-        safety net),
-      - ONLY the active policy's rate matrix.
+      - the active policy's classification table,
+      - the active policy's rate matrix.
+    Only the active scope's tables are pinned now that retrieval is
+    scope-filtered (a leave query pins nothing), so the answer prompt no longer
+    needs a "don't cross-apply the other policy's categories" guard.
     De-duped by content, in a stable, logical order.
     """
-    other = "foreign" if trip_type == "domestic" else "domestic"
     order = [
         f"{trip_type}_classification",
-        f"{other}_classification",
         f"{trip_type}_rate",
     ]
     pinned: List[Document] = []

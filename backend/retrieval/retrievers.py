@@ -26,24 +26,24 @@ def _bm25_tokenize(text: str) -> List[str]:
 def vector_search(
     store: QdrantVectorStore,
     query: str,
-    policy: str,
+    scope: str,
     k: int | None = None,
 ) -> List[Document]:
     """
-    Semantic similarity search, restricted to one policy via a Qdrant metadata
-    filter (`metadata.policy == <policy>`). This is where the retriever — not
-    the prompt — keeps Domestic and Foreign body content apart.
+    Semantic similarity search, restricted to one scope via a Qdrant metadata
+    filter (`metadata.scope == <scope>`). This is where the retriever — not the
+    prompt — keeps the domains (domestic | foreign | leave) apart.
 
     Graceful fallback: if the filtered search returns nothing (e.g. the corpus
-    hasn't been re-ingested with policy tags yet), retry unfiltered so the app
+    hasn't been re-ingested with scope tags yet), retry unfiltered so the app
     keeps working and self-heals once `create_db.py` is re-run.
     """
     k = k or settings.vector_k
     flt = qmodels.Filter(
         must=[
             qmodels.FieldCondition(
-                key="metadata.policy",
-                match=qmodels.MatchValue(value=policy),
+                key="metadata.scope",
+                match=qmodels.MatchValue(value=scope),
             )
         ]
     )
@@ -55,7 +55,7 @@ def vector_search(
         logger.warning(
             "Filtered vector search failed (status=%s, detail=%s); retrying "
             "unfiltered. If this persists, re-run create_db.py — the "
-            "'metadata.policy' payload index is required for filtering under "
+            "'metadata.scope' payload index is required for filtering under "
             "Qdrant strict mode.",
             status,
             content or repr(e),
@@ -63,8 +63,8 @@ def vector_search(
         return store.similarity_search(query, k=k)
     if not docs:
         logger.warning(
-            f"No vector hits for policy={policy!r}. The corpus may predate the "
-            "policy tag — re-run create_db.py. Falling back to unfiltered search."
+            f"No vector hits for scope={scope!r}. The corpus may predate the "
+            "scope tag — re-run create_db.py. Falling back to unfiltered search."
         )
         return store.similarity_search(query, k=k)
     return docs
@@ -112,27 +112,31 @@ def build_bm25_retriever(store: QdrantVectorStore) -> BM25Retriever:
     return retriever
 
 
-def build_bm25_by_policy(store: QdrantVectorStore) -> Dict[str, BM25Retriever]:
+def build_bm25_by_scope(store: QdrantVectorStore) -> Dict[str, BM25Retriever]:
     """
-    Build one BM25 index PER policy. BM25 is in-memory and can't be filtered
-    after the fact like the vector store, so we keep a separate index per policy
-    and pick the matching one at query time — the keyword-search equivalent of
-    the vector metadata filter.
+    Build one BM25 index PER scope (domestic | foreign | leave). BM25 is
+    in-memory and can't be filtered after the fact like the vector store, so we
+    keep a separate index per scope and pick the matching one at query time —
+    the keyword-search equivalent of the vector metadata filter. Keying on
+    `scope` (always present) means no chunk is silently dropped from the index.
     """
     docs = _scroll_all_docs(store)
     grouped: Dict[str, List[Document]] = {}
     for d in docs:
-        policy = (d.metadata or {}).get("policy")
-        if not policy:
+        scope = (d.metadata or {}).get("scope")
+        if not scope:
+            logger.warning(
+                "Chunk with no 'scope' skipped from BM25 (re-ingest needed)."
+            )
             continue
-        grouped.setdefault(policy, []).append(d)
+        grouped.setdefault(scope, []).append(d)
 
     retrievers: Dict[str, BM25Retriever] = {}
-    for policy, group in grouped.items():
+    for scope, group in grouped.items():
         r = BM25Retriever.from_documents(group, preprocess_func=_bm25_tokenize)
         r.k = settings.bm25_k
-        retrievers[policy] = r
-    logger.info(f"Built BM25 indexes for policies: {sorted(retrievers)}")
+        retrievers[scope] = r
+    logger.info(f"Built BM25 indexes for scopes: {sorted(retrievers)}")
     return retrievers
 
 
@@ -151,31 +155,48 @@ def hybrid_retrieve(
     bm25_query: str,
     vector_query: str,
     store: QdrantVectorStore,
-    bm25_by_policy: Dict[str, BM25Retriever],
-    policy: str,
+    bm25_by_scope: Dict[str, BM25Retriever],
+    scope: str,
 ) -> List[Document]:
     """
-    Hybrid retrieval restricted to one policy:
-      - BM25 uses the (rewritten) user keywords against the policy's index.
+    Hybrid retrieval restricted to ONE scope:
+      - BM25 uses the (rewritten) user keywords against the scope's index.
       - Vector search uses the (optionally HYDE-expanded) query, filtered to the
-        same policy.
-    Results are concatenated + de-duped. Both legs are policy-scoped, so a
-    Domestic query never surfaces Foreign body chunks (and vice versa).
+        same scope.
+    Results are concatenated + de-duped. Both legs are scope-scoped, so a leave
+    query never surfaces travel body chunks (and vice versa).
     """
-    bm25 = bm25_by_policy.get(policy)
+    bm25 = bm25_by_scope.get(scope)
     if bm25 is not None:
         bm25_docs = bm25.invoke(bm25_query)
     else:
         logger.warning(
-            f"No BM25 index for policy={policy!r} (re-ingest needed?); "
-            "skipping the keyword leg for this query."
+            f"No BM25 index for scope={scope!r} (re-ingest needed?); "
+            "skipping the keyword leg for this scope."
         )
         bm25_docs = []
-    vec_docs = vector_search(store, vector_query, policy)
+    vec_docs = vector_search(store, vector_query, scope)
     logger.info(
-        f"Retrieved BM25={len(bm25_docs)}, Vector={len(vec_docs)} "
-        f"(policy={policy})"
+        f"Retrieved BM25={len(bm25_docs)}, Vector={len(vec_docs)} (scope={scope})"
     )
-    merged = _dedupe(bm25_docs + vec_docs)
-    logger.info(f"After dedupe: {len(merged)} candidate(s)")
+    return _dedupe(bm25_docs + vec_docs)
+
+
+@traceable(name="multi_scope_retrieve")
+def multi_scope_retrieve(
+    bm25_query: str,
+    vector_query: str,
+    store: QdrantVectorStore,
+    bm25_by_scope: Dict[str, BM25Retriever],
+    scopes,
+) -> List[Document]:
+    """Run hybrid retrieval once per scope and union + dedupe across them. The
+    router decides `scopes`; a cross-domain question unions travel + leave hits."""
+    out: List[Document] = []
+    for scope in scopes:
+        out.extend(
+            hybrid_retrieve(bm25_query, vector_query, store, bm25_by_scope, scope)
+        )
+    merged = _dedupe(out)
+    logger.info(f"Multi-scope retrieve {list(scopes)} -> {len(merged)} candidate(s)")
     return merged

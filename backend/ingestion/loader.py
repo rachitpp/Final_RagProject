@@ -3,6 +3,7 @@ import re
 import pdfplumber
 from langchain_core.documents import Document
 from langsmith import traceable
+from config.documents import FILE_SCOPES, scope_for
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
@@ -126,17 +127,6 @@ def _render_markdown(rows: list[list[str]]) -> str:
     return "\n".join(lines)
 
 
-def _policy_for(path: str) -> str:
-    """Derive the policy tag from the filename so retrieval can isolate one
-    policy per query. 'foreign.pdf' -> 'foreign'; everything else (e.g.
-    'domestic travel.pdf') -> 'domestic'. This is the single structural fact
-    that lets the retriever — not the prompt — keep the two policies apart."""
-    name = os.path.basename(path).lower()
-    if "foreign" in name or "overseas" in name:
-        return "foreign"
-    return "domestic"
-
-
 def _load_one_pdf(path: str) -> list[Document]:
     """
     Load a single PDF, keeping narrative text and rendering tables as markdown.
@@ -145,6 +135,14 @@ def _load_one_pdf(path: str) -> list[Document]:
     across a page boundary (e.g. the band rate matrix) is stitched back into a
     single self-describing table rather than left as a headerless fragment.
     """
+    base = os.path.basename(path)
+    scope = scope_for(base)
+    if base.lower() not in FILE_SCOPES:
+        logger.warning(
+            "No registry entry for %r; defaulting scope=%r. Add it to "
+            "config/documents.py.", base, scope,
+        )
+
     page_parts: list[tuple[int, str, list[list[list[str]]]]] = []
     prev_page_last_table: list[list[str]] | None = None
 
@@ -198,12 +196,15 @@ def _load_one_pdf(path: str) -> list[Document]:
             docs.append(Document(
                 page_content=content,
                 metadata={
-                    "source": os.path.basename(path),
+                    "source": base,
                     # +1 so this is the 1-based human page number, not the
                     # 0-based enumerate index. The raw index used to leak into
                     # citations as "p.0", "p.1" (one low on every page).
                     "page": page_idx + 1,
-                    "policy": _policy_for(path),
+                    "scope": scope,
+                    # Keep `policy` for travel so pinning + the rate-table
+                    # filter keep working unchanged; leave carries scope only.
+                    **({"policy": scope} if scope in ("domestic", "foreign") else {}),
                 },
             ))
     logger.info(f"Loaded {len(docs)} page(s) from '{path}'")

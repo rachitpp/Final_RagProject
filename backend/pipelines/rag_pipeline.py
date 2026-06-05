@@ -6,18 +6,19 @@ from langchain_core.messages import ToolMessage
 from ingestion.vector_store import load_vector_store
 from retrieval.retrievers import (
     build_bm25_retriever,
-    build_bm25_by_policy,
-    hybrid_retrieve,
+    build_bm25_by_scope,
+    multi_scope_retrieve,
     _scroll_all_docs,
 )
 from retrieval.pinned import resolve_pinned, select_pinned
-from retrieval.classify import classify_trip_type
+from retrieval.classify import route_query
 from retrieval.formatter import format_docs
 from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
 from llm.models import get_llm
-from llm.prompts import ANSWER_PROMPT
+from llm.prompts import ANSWER_PROMPT, LEAVE_ANSWER_PROMPT, LEAVE_ADDENDUM
 from llm.tools import compute_entitlement
+from config.documents import capabilities_for
 from config.settings import settings
 from utils.logger import get_logger
 
@@ -54,13 +55,13 @@ class RAGPipeline:
     concurrent conversations. Storage is owned by the caller (conversation/store.py
     for the web layer; main.py for the CLI).
 
-    Flow: rewrite -> classify policy -> policy-scoped BM25 + vector (union,
-    dedup) -> pin reference tables (both classifications + active rate) -> LLM.
+    Flow: rewrite -> route to scope(s) -> scope-filtered BM25 + vector (union,
+    dedup) -> pin reference tables (travel scopes only) -> LLM.
 
-    Policy isolation is owned by RETRIEVAL, not the prompt: the trip type is
-    decided once (classify_trip_type) and that single decision drives the body
-    filter, which rate table is pinned, and the prompt's grounding line — so
-    they can never disagree.
+    Scope isolation is owned by RETRIEVAL, not the prompt: routing is decided
+    once (route_query) and that single decision drives the scope filter, which
+    rate table is pinned (travel only), the calculator gating, and the prompt's
+    grounding line — so they can never disagree.
 
     Arithmetic is owned by CODE, not the model: it reads the rates from the
     retrieved context and calls the `compute_entitlement` tool, which totals
@@ -73,12 +74,15 @@ class RAGPipeline:
         self.store = store
         # Combined index — used by the sidebar's Library view (lists all docs).
         self.bm25 = build_bm25_retriever(store)
-        # Per-policy indexes — used for policy-scoped keyword retrieval.
-        self.bm25_by_policy = build_bm25_by_policy(store)
-        # Bind the calculator so the model offloads every total to exact code
-        # (llm/tools.py) — code does the math, the model does the language.
+        # Per-scope indexes — used for scope-scoped keyword retrieval.
+        self.bm25_by_scope = build_bm25_by_scope(store)
+        # Two LLMs: a base one for non-travel (e.g. leave) answers, and a
+        # tool-bound variant for travel answers that may call the calculator —
+        # code does the math, the model does the language (llm/tools.py). Which
+        # one is used is gated per query by the scopes' capabilities.
         self._tools = {compute_entitlement.name: compute_entitlement}
-        self.llm = get_llm(streaming=True).bind_tools([compute_entitlement])
+        self.llm = get_llm(streaming=True)
+        self.llm_with_tools = self.llm.bind_tools([compute_entitlement])
         # Reference tables resolved ONCE at startup. select_pinned() then picks
         # the right subset per query based on trip type. See retrieval/pinned.py.
         self.pinned = resolve_pinned(_scroll_all_docs(store))
@@ -104,24 +108,28 @@ class RAGPipeline:
 
     @traceable(
         name="rag_pipeline.retrieve",
-        metadata={"retriever": "classify+bm25+vector-similarity+pinned-tables"},
+        metadata={"retriever": "route+bm25+vector-similarity+pinned-tables"},
     )
-    def _retrieve(self, query: str, history: list) -> tuple[list, str, str, bool]:
-        """Rewrite → classify policy → policy-scoped hybrid retrieve → pin
-        reference tables. Returns (context_docs, rewritten_query, trip_type,
-        assumed)."""
+    def _retrieve(self, query: str, history: list):
+        """Rewrite → route to scope(s) → scope-filtered hybrid retrieve (union)
+        → pin reference tables for travel scopes. Returns (context_docs,
+        rewritten_query, route)."""
         rewritten = rewrite_query(query, history)
-        trip_type, assumed = classify_trip_type(rewritten)
+        route = route_query(rewritten)
+        if not route.scopes:
+            return [], rewritten, route
         vector_query = generate_hyde(rewritten) if settings.hyde_enabled else rewritten
-        candidates = hybrid_retrieve(
+        candidates = multi_scope_retrieve(
             bm25_query=rewritten,
             vector_query=vector_query,
             store=self.store,
-            bm25_by_policy=self.bm25_by_policy,
-            policy=trip_type,
+            bm25_by_scope=self.bm25_by_scope,
+            scopes=route.scopes,
         )
-        # Guarantee the reference tables are present regardless of ranking.
-        return self._merge_pinned(candidates, trip_type), rewritten, trip_type, assumed
+        # Guarantee the reference tables are present (travel scopes only).
+        if "pin_tables" in capabilities_for(route.scopes) and route.trip_type:
+            candidates = self._merge_pinned(candidates, route.trip_type)
+        return candidates, rewritten, route
 
     def stream_answer(
         self, query: str, history: list | None = None
@@ -136,21 +144,41 @@ class RAGPipeline:
         back, and stream the next round — so tool rounds stay invisible and
         only the final prose reaches the user.
         """
-        context_docs, rewritten, trip_type, assumed = self._retrieve(
-            query, history or []
-        )
+        context_docs, rewritten, route = self._retrieve(query, history or [])
+
+        # Off-topic / greeting -> ask to clarify rather than retrieve noise.
+        if not route.scopes:
+            yield (
+                "I can help with the company's travel-reimbursement and leave "
+                "policies. Could you rephrase your question around one of those?"
+            )
+            return
 
         context = format_docs(context_docs)
-        messages = ANSWER_PROMPT.format_messages(
-            context=context,
-            question=rewritten,
-            trip_type=_trip_label(trip_type, assumed),
-        )
+        caps = capabilities_for(route.scopes)
+
+        if route.trip_type is not None:
+            # Travel (optionally + leave): the tuned travel prompt drives it.
+            messages = ANSWER_PROMPT.format_messages(
+                context=context,
+                question=rewritten,
+                trip_type=_trip_label(route.trip_type, route.assumed),
+            )
+            if "leave" in route.scopes:
+                messages[0].content = messages[0].content + "\n\n" + LEAVE_ADDENDUM
+        else:
+            # Leave-only: no travel machinery, no calculator.
+            messages = LEAVE_ANSWER_PROMPT.format_messages(
+                context=context, question=rewritten,
+            )
+
+        # Offer the calculator only for scopes that declare it (travel).
+        llm = self.llm_with_tools if "calculator" in caps else self.llm
 
         for _ in range(_MAX_TOOL_ROUNDS):
             round_pieces: list[str] = []
             gathered = None
-            for chunk in self.llm.stream(messages):
+            for chunk in llm.stream(messages):
                 piece = getattr(chunk, "content", None) or ""
                 if piece:
                     round_pieces.append(piece)

@@ -56,6 +56,14 @@ def _ensure_collection(client: QdrantClient) -> None:
         field_schema=PayloadSchemaType.KEYWORD,
     )
     logger.info("Created payload index on 'metadata.policy' (keyword)")
+    # Same for the scope key (domestic | foreign | leave) — the always-present
+    # isolation key retrieval filters on once routing is multi-domain.
+    client.create_payload_index(
+        collection_name=settings.qdrant_collection,
+        field_name="metadata.scope",
+        field_schema=PayloadSchemaType.KEYWORD,
+    )
+    logger.info("Created payload index on 'metadata.scope' (keyword)")
 
 
 @traceable(name="create_vector_store")

@@ -4,9 +4,12 @@ import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom"
 import { Toaster } from "sonner";
 import "./index.css";
 import ChatPage from "@/pages/ChatPage";
+import AuthPage from "@/pages/AuthPage";
 
 const router = createBrowserRouter([
   { path: "/", element: <ChatPage /> },
+  { path: "/login", element: <AuthPage initialMode="login" /> },
+  { path: "/activate", element: <AuthPage initialMode="activate" /> },
   { path: "*", element: <Navigate to="/" replace /> },
 ]);
 

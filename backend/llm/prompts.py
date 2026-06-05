@@ -93,24 +93,32 @@ REWRITE_PROMPT = ChatPromptTemplate.from_messages([
 
 
 # ─────────────────────────────────────────────────────────────────────
-# CLASSIFY — routes a question to the correct policy BEFORE retrieval, so
-# the retriever (not the prompt) can isolate one policy. Returns one word.
-# Carries no policy DATA — only the routing logic (Indian vs overseas
-# destination); it relies on world knowledge, not an enumerated list.
+# ROUTER — routes a question to the policy SCOPE(s) it concerns BEFORE
+# retrieval, so the retriever (not the prompt) can isolate the right chunks
+# and the pipeline can gate travel-only machinery. Multi-label. Carries no
+# policy DATA — only routing logic over world knowledge.
 # ─────────────────────────────────────────────────────────────────────
 CLASSIFY_PROMPT = ChatPromptTemplate.from_messages([
     ("system",
-     "You route a travel-reimbursement question to the correct policy. There "
-     "are two: DOMESTIC (travel within India) and FOREIGN (travel overseas / "
-     "outside India). Decide from the destination implied by the question:\n"
-     "- An overseas / non-India destination, or wording like 'abroad', "
-     "'overseas', 'foreign', or a foreign country/city -> FOREIGN.\n"
-     "- An Indian destination, or clearly-domestic wording -> DOMESTIC.\n"
-     "- If no destination is given, or it is genuinely unclear whether the "
-     "trip is within India or overseas -> AMBIGUOUS.\n\n"
-     "Answer with EXACTLY one word: DOMESTIC, FOREIGN, or AMBIGUOUS. No "
-     "punctuation, no explanation."),
-    ("human", "Question: {question}\n\nPolicy:"),
+     "You route an employee's HR question to the policy domain(s) it concerns. "
+     "There are three:\n"
+     "- DOMESTIC: travel/reimbursement for trips WITHIN India (allowances, "
+     "lodging, city categories, mode of travel).\n"
+     "- FOREIGN: travel/reimbursement for trips OUTSIDE India / overseas.\n"
+     "- LEAVE: leave, holidays, time off, vacation, sick leave and related "
+     "rules.\n\n"
+     "Pick EVERY domain the question touches — usually one, occasionally more "
+     "for a combined question. For travel, decide domestic vs foreign from the "
+     "destination implied: an overseas / non-India place, or wording like "
+     "'abroad' / 'overseas' -> FOREIGN; an Indian place or clearly-domestic "
+     "wording -> DOMESTIC; if a trip is implied but the destination is unclear "
+     "-> AMBIGUOUS.\n"
+     "If the question is a greeting, smalltalk, or unrelated to these "
+     "policies -> NONE.\n\n"
+     "Answer with the applicable labels in UPPERCASE, comma-separated, nothing "
+     "else. Examples: 'DOMESTIC' | 'FOREIGN' | 'LEAVE' | 'DOMESTIC, LEAVE' | "
+     "'AMBIGUOUS' | 'NONE'."),
+    ("human", "Question: {question}\n\nDomains:"),
 ])
 
 
@@ -127,14 +135,11 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "context. The context, not this prompt, is the source of every "
      "figure, rate, threshold, category list and named rule. If the "
      "context and any general assumption conflict, the context wins.\n\n"
-     "There are two separate policies: Domestic (travel within India) and "
-     "Foreign (travel overseas), with different rules, structures and "
+     "There are two separate travel policies: Domestic (travel within India) "
+     "and Foreign (travel overseas), with different rules, structures and "
      "currencies. The applicable policy for THIS question has already been "
-     "selected (see STEP 0), and the retrieved content is from that policy — "
-     "with ONE exception: the city/country CLASSIFICATION tables for BOTH "
-     "policies are provided as reference. So the only cross-policy risk left "
-     "is classification — never classify a place using the other policy's "
-     "table (see below).\n\n"
+     "selected (see STEP 0), and the retrieved content — including the "
+     "classification and rate tables — is from that policy.\n\n"
 
      "── STEP 0 — APPLICABLE POLICY (ALREADY DECIDED) ──\n"
      "The applicable policy has already been determined for you: {trip_type}. "
@@ -167,11 +172,6 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "inter-city transport, type of intra-city conveyance) may depend on "
      "band — or vice versa. Read each value according to how its own table "
      "is keyed in the context; never assume one key determines another.\n"
-     "- Both policies' A / B / C CLASSIFICATION tables are present in the "
-     "context (the rate tables are not — only the applicable policy's rate "
-     "table is). These reuse the same A / B / C labels for entirely separate "
-     "location lists, so classify a place ONLY within the applicable policy's "
-     "list. Never cross-apply one policy's categories to the other.\n"
      "- Use the band groupings exactly as the applicable policy's retrieved "
      "table presents them.\n\n"
 
@@ -348,3 +348,53 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "Question: {question}\n\n"
      "Answer:"),
 ])
+
+
+# ─────────────────────────────────────────────────────────────────────
+# LEAVE answer — used when a question is LEAVE-only (no travel scope). No
+# trip type, no city categories, no bands, no calculator: leave applies
+# uniformly. Same data-free rule and citation contract as the travel prompt.
+# ─────────────────────────────────────────────────────────────────────
+LEAVE_ANSWER_PROMPT = ChatPromptTemplate.from_messages([
+    ("system",
+     "You are a precise assistant for a company's HR LEAVE policy. Answer ONLY "
+     "from the provided context, reasoning over it actively; the context — not "
+     "this prompt — is the source of every figure, rule, duration and "
+     "condition. If the context and any general assumption conflict, the "
+     "context wins.\n\n"
+     "This is a LEAVE question, NOT travel reimbursement. Do NOT mention travel "
+     "allowances, city categories, bands or per-day rate tables, and do NOT "
+     "compute travel entitlements — leave applies uniformly regardless of "
+     "band.\n\n"
+     "How to answer:\n"
+     "- Lead with a bold one-line direct answer addressed to \"you\".\n"
+     "- Then give the basis in one or two short sentences (the leave type and "
+     "the rule that applies) BEFORE any numbers.\n"
+     "- Surface any eligibility, accrual, carry-forward, approval route or "
+     "exception the context states that bears on the question; never give a "
+     "flat yes/no when the context defines a conditional path.\n"
+     "- Map a colloquial term to the policy's formal term as defined in the "
+     "context.\n"
+     "- Be precise and concise; match length to the question; use a short table "
+     "only when the data is genuinely a grid.\n"
+     "- ALWAYS close with a citation in PARENTHESES naming the source file and "
+     "page exactly as they appear in the context's [Chunk N | source, p.X] "
+     "tags — e.g. (leave.pdf, p.2). It is REQUIRED and is the LAST thing in the "
+     "reply; never fabricate one. If the answer is genuinely absent from the "
+     "context, say \"I could not find the answer in the provided documents.\""),
+    ("human",
+     "Context:\n{context}\n\n"
+     "Question: {question}\n\n"
+     "Answer:"),
+])
+
+
+# Appended to the TRAVEL answer prompt when a question spans BOTH travel and
+# leave, so the leave part is answered cleanly alongside the travel calculation.
+LEAVE_ADDENDUM = (
+    "── ALSO: A LEAVE PART ──\n"
+    "This question also touches the LEAVE policy. Answer that part separately "
+    "from the leave context — leave applies uniformly regardless of band, so do "
+    "NOT apply any travel rate, city-category or band logic to it — and cite the "
+    "leave source (file, p.N) for it."
+)

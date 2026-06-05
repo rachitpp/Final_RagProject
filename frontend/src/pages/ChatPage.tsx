@@ -136,6 +136,7 @@ export default function ChatPage() {
             >
               <textarea
                 ref={taRef}
+                aria-label="Ask about the travel policy"
                 rows={1}
                 value={input}
                 onChange={(e) => setInput(e.target.value)}

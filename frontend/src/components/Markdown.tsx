@@ -11,7 +11,6 @@ function chipify(node: ReactNode): ReactNode {
   if (typeof node === "string") {
     const out: ReactNode[] = [];
     let last = 0;
-    let key = 0;
     let match: RegExpExecArray | null;
     CITATION.lastIndex = 0;
     while ((match = CITATION.exec(node)) !== null) {
@@ -20,7 +19,7 @@ function chipify(node: ReactNode): ReactNode {
       const tip = label.replace(/,\s*p\./i, " · page ");
       out.push(
         <cite
-          key={key++}
+          key={`cite-${match.index}`}
           className="group relative mx-0.5 inline-flex max-w-full cursor-default items-center gap-1 whitespace-nowrap rounded-md border border-gold/30 bg-gold/10 px-1.5 py-0.5 align-middle font-mono text-[0.72em] not-italic text-gold"
         >
           <FileText className="h-3 w-3" />

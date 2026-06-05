@@ -148,6 +148,7 @@ html.light {
   --animate-rise: rise 620ms var(--ease) both;
   --animate-user-in: user-in 600ms var(--ease-soft) both;
   --animate-msg-in: msg-in 640ms var(--ease-soft) both;
+  --animate-auth-swap: auth-swap 540ms var(--ease-soft) both;
 }
 
 @keyframes rise {
@@ -160,6 +161,10 @@ html.light {
 }
 @keyframes msg-in {
   from { opacity: 0; transform: translateY(12px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+@keyframes auth-swap {
+  from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
 }
 @keyframes glyph-breathe {

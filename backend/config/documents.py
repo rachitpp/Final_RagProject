@@ -1,0 +1,54 @@
+# =============================================================
+# Document registry — the single source of truth for what each
+# policy PDF is. Replaces filename-sniffing in the loader.
+# =============================================================
+"""
+Maps each PDF's filename to its retrieval SCOPE (``domestic | foreign | leave``)
+— the always-present key retrieval isolates on — and maps each scope to the
+post-retrieval capabilities its answers need. The loader stamps ``scope`` on
+every chunk from this; the retriever filters on it; the pipeline gates
+travel-only machinery (pinned rate tables, the ``compute_entitlement``
+calculator, band injection) on the capabilities of the scopes a query touches.
+
+Add a policy PDF = add one row to ``FILE_SCOPES`` (and a ``SCOPE_CAPABILITIES``
+entry only if it introduces a new scope), drop the file in ``pdf/``, re-ingest.
+No other file changes.
+"""
+import os
+
+# PDF filename (basename, lowercased) -> retrieval scope.
+FILE_SCOPES: dict[str, str] = {
+    "domestic travel.pdf": "domestic",
+    "foreign.pdf": "foreign",
+    "leave.pdf": "leave",
+}
+
+# Scope -> the post-retrieval machinery its answers need.
+#   pin_tables : guarantee the rate/classification reference tables in context
+#   calculator : offer the compute_entitlement tool
+#   band       : inject the user's band into the answer prompt
+# Leave is band-agnostic and has no rate tables, so it declares nothing.
+SCOPE_CAPABILITIES: dict[str, tuple[str, ...]] = {
+    "domestic": ("pin_tables", "calculator", "band"),
+    "foreign": ("pin_tables", "calculator", "band"),
+    "leave": (),
+}
+
+# Used only if an untracked PDF is ingested; the loader logs a warning so this
+# is never silent (the old filename-sniffing mis-tagged leave.pdf as domestic).
+DEFAULT_SCOPE = "domestic"
+
+ALL_SCOPES: tuple[str, ...] = tuple(SCOPE_CAPABILITIES)
+
+
+def scope_for(filename: str) -> str:
+    """Resolve a PDF filename to its scope (DEFAULT_SCOPE if untracked)."""
+    return FILE_SCOPES.get(os.path.basename(filename).lower(), DEFAULT_SCOPE)
+
+
+def capabilities_for(scopes) -> set[str]:
+    """Union of capabilities across the given scopes (for query-time gating)."""
+    caps: set[str] = set()
+    for s in scopes:
+        caps.update(SCOPE_CAPABILITIES.get(s, ()))
+    return caps
