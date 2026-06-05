@@ -24,14 +24,16 @@ FILE_SCOPES: dict[str, str] = {
 }
 
 # Scope -> the post-retrieval machinery its answers need.
-#   pin_tables : guarantee the rate/classification reference tables in context
-#   calculator : offer the compute_entitlement tool
-#   band       : inject the user's band into the answer prompt
-# Leave is band-agnostic and has no rate tables, so it declares nothing.
+#   pin_tables   : guarantee the rate/classification reference tables in context
+#   calculator   : offer the compute_entitlement tool (travel totals)
+#   band         : inject the user's band into the answer prompt
+#   leave_ledger : offer the compute_leave_ledger tool (leave dates/balances/LWOP)
+# Leave is band-agnostic (no rate tables) but is temporally complex, so it needs
+# the deterministic ledger.
 SCOPE_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "domestic": ("pin_tables", "calculator", "band"),
     "foreign": ("pin_tables", "calculator", "band"),
-    "leave": (),
+    "leave": ("leave_ledger",),
 }
 
 # Used only if an untracked PDF is ingested; the loader logs a warning so this

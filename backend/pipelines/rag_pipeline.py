@@ -17,7 +17,7 @@ from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
 from llm.models import get_llm
 from llm.prompts import ANSWER_PROMPT, LEAVE_ANSWER_PROMPT, LEAVE_ADDENDUM
-from llm.tools import compute_entitlement
+from llm.tools import compute_entitlement, compute_leave_ledger
 from config.documents import capabilities_for
 from config.settings import settings
 from utils.logger import get_logger
@@ -76,13 +76,15 @@ class RAGPipeline:
         self.bm25 = build_bm25_retriever(store)
         # Per-scope indexes — used for scope-scoped keyword retrieval.
         self.bm25_by_scope = build_bm25_by_scope(store)
-        # Two LLMs: a base one for non-travel (e.g. leave) answers, and a
-        # tool-bound variant for travel answers that may call the calculator —
-        # code does the math, the model does the language (llm/tools.py). Which
-        # one is used is gated per query by the scopes' capabilities.
-        self._tools = {compute_entitlement.name: compute_entitlement}
+        # capability name -> the tool it unlocks; bound per query from the active
+        # scopes' capabilities (registry-driven, scales to new tools). Code does
+        # the math, the model does the language (llm/tools.py).
+        self._cap_tools = {
+            "calculator": compute_entitlement,
+            "leave_ledger": compute_leave_ledger,
+        }
+        self._tools = {t.name: t for t in self._cap_tools.values()}
         self.llm = get_llm(streaming=True)
-        self.llm_with_tools = self.llm.bind_tools([compute_entitlement])
         # Reference tables resolved ONCE at startup. select_pinned() then picks
         # the right subset per query based on trip type. See retrieval/pinned.py.
         self.pinned = resolve_pinned(_scroll_all_docs(store))
@@ -172,8 +174,10 @@ class RAGPipeline:
                 context=context, question=rewritten,
             )
 
-        # Offer the calculator only for scopes that declare it (travel).
-        llm = self.llm_with_tools if "calculator" in caps else self.llm
+        # Bind only the tools the active scopes' capabilities unlock
+        # (travel -> calculator, leave -> ledger); plain LLM if none.
+        tools = [self._cap_tools[c] for c in self._cap_tools if c in caps]
+        llm = self.llm.bind_tools(tools) if tools else self.llm
 
         for _ in range(_MAX_TOOL_ROUNDS):
             round_pieces: list[str] = []
