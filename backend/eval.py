@@ -11,6 +11,9 @@ Each case:
   q       : the question
   must    : regex patterns that must ALL appear in the answer
   forbid  : regex patterns that must NOT appear (optional)
+  band    : (optional) inject this band as the authenticated caller, so the
+            answer is band-scoped exactly like a logged-in user (E101=9, E107=3).
+            Omit for the bandless "answer for every band" behaviour.
 
 Gold values are read straight from the two policy PDFs:
   Domestic rate matrix [A | B | C]
@@ -55,8 +58,11 @@ CASES = [
      "must": [r"\bb\b", r"\$?\s*200\b"]},
 
     # ---- Multi-day / multi-city totals ----
+    # "Entitlement" = the full lodging + boarding the policy grants (the model
+    # rightly totals both, not lodging alone). Delhi=A, Jaipur=B; grand totals
+    # per band = (LA+BA)*3 for each leg, summed: see the band-by-band figures.
     {"q": "How much is the entitlement for 3 days in Delhi and 3 days in Jaipur?",
-     "must": [r"19[,\s]?500", r"12[,\s]?900", r"9[,\s]?000", r"5[,\s]?100"]},
+     "must": [r"24[,\s]?750", r"17[,\s]?100", r"11[,\s]?700", r"\b7[,\s]?200\b"]},
     {"q": "How much is the entitlement for 3 days in Mumbai and 2 days in Bangalore?",
      "must": [r"20[,\s]?000", r"12[,\s]?500"]},
 
@@ -91,11 +97,41 @@ CASES = [
     # ---- Genuinely absent ----
     {"q": "How do I book the hotel through the company portal?",
      "must": [r"could not find|not (?:contain|specify|provide|mention)|does not|no information|unable to find"]},
+
+    # ---- Band-scoped answers (authenticated caller) ----
+    # Guards the foreign category-C-by-exclusion fix: Brazil is not listed, so the
+    # model must resolve Category C and read the C row ($175 for Band 9&10),
+    # NEVER the Category-A row ($250) — the exact bug these cases lock in.
+    {"q": "What is my standard daily allowance for a trip to Brazil?", "band": 9,
+     "must": [r"categor\w*\W*'?c'?\b", r"\b175\b"], "forbid": [r"\$?\s*250\b"]},
+    {"q": "I am going to Brazil and the company provides both my boarding and lodging. What is my daily allowance?",
+     "band": 9, "must": [r"categor\w*\W*'?c'?\b", r"52[.,]?50?"], "forbid": [r"\$?\s*75\b"]},
+    # Band scoping: same Brazil trip, lower band reads the "Upto Band 7" column ($75).
+    {"q": "What is my standard daily allowance for a trip to Brazil?", "band": 7,
+     "must": [r"categor\w*\W*'?c'?\b", r"\b75\b"], "forbid": [r"\$?\s*175\b", r"\$?\s*250\b"]},
+    # Eligibility gate: foreign policy covers Bands 7-10 only, so a lower band must be
+    # routed to the Foreign Travel sanction, NOT given a rate — for an explicitly
+    # listed country (USA) AND a by-exclusion one (Brazil).
+    {"q": "What is my daily allowance for a business trip to the USA?", "band": 3,
+     "must": [r"sanction|not eligible|outside|does not (?:apply|cover)|not covered"]},
+    {"q": "What is my daily allowance for a business trip to Brazil?", "band": 3,
+     "must": [r"sanction|not eligible|outside|does not (?:apply|cover)|not covered"]},
+    # Domestic band scoping: all bands eligible, but the rate differs by band.
+    {"q": "I am staying in a hotel in Mumbai for 1 night. What is my lodging entitlement?",
+     "band": 3, "must": [r"categor\w*\W*'?a'?\b", r"\b1000\b"], "forbid": [r"\b4000\b"]},
+    {"q": "I am staying in a hotel in Mumbai for 1 night. What is my lodging entitlement?",
+     "band": 9, "must": [r"categor\w*\W*'?a'?\b", r"\b4000\b"]},
 ]
 
 
 def _norm(text: str) -> str:
     return re.sub(r"\s+", " ", text).strip()
+
+
+class _Profile:
+    """Minimal authenticated-caller stand-in: the pipeline duck-types `.band`."""
+    def __init__(self, band: int):
+        self.band = band
 
 
 def main():
@@ -105,13 +141,15 @@ def main():
     for i, case in enumerate(CASES, 1):
         # Each gold case is independent: no history passed -> no follow-up
         # rewriting (the pipeline is stateless, so there's nothing to clear).
-        ans = _norm("".join(pipe.stream_answer(case["q"])))
+        profile = _Profile(case["band"]) if "band" in case else None
+        ans = _norm("".join(pipe.stream_answer(case["q"], user_profile=profile)))
         miss = [p for p in case["must"] if not re.search(p, ans, re.I)]
         bad = [p for p in case.get("forbid", []) if re.search(p, ans, re.I)]
         ok = not miss and not bad
         passed += ok
         mark = "PASS" if ok else "FAIL"
-        print(f"[{mark}] {i:2d}. {case['q'][:70]}")
+        tag = f" [B{case['band']}]" if "band" in case else ""
+        print(f"[{mark}] {i:2d}.{tag} {case['q'][:66]}")
         if not ok:
             if miss:
                 print(f"        missing: {miss}")

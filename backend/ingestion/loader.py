@@ -207,8 +207,43 @@ def _load_one_pdf(path: str) -> list[Document]:
                     **({"policy": scope} if scope in ("domestic", "foreign") else {}),
                 },
             ))
+    docs.extend(_load_curated_sibling(path, scope, base))
     logger.info(f"Loaded {len(docs)} page(s) from '{path}'")
     return docs
+
+
+def _load_curated_sibling(pdf_path: str, scope: str, base: str) -> list[Document]:
+    """
+    Escape hatch for tables pdfplumber cannot extract.
+
+    Some policy PDFs (HTML exports) draw tables without ruling lines; pdfplumber
+    finds no table there and the grid collapses into an unreadable run-on line
+    (e.g. the LWOP weekly-off scenarios in leave.pdf). For those, a hand-cleaned
+    markdown transcription can live next to the PDF as ``<stem>.tables.md`` and is
+    ingested as extra chunk(s) that INHERIT the PDF's scope. An optional leading
+    ``<!-- page: N -->`` sets the citation page. This is the same "guarantee the
+    hard table by hand" philosophy as retrieval/pinned.py, applied at ingestion.
+    """
+    md_path = os.path.splitext(pdf_path)[0] + ".tables.md"
+    if not os.path.exists(md_path):
+        return []
+    with open(md_path, encoding="utf-8") as f:
+        text = f.read()
+    page = None
+    m = re.match(r"\s*<!--\s*page:\s*(\d+)\s*-->\s*", text)
+    if m:
+        page = int(m.group(1))
+        text = text[m.end():]
+    text = text.strip()
+    if not text:
+        return []
+    meta: dict = {"source": base, "scope": scope}
+    if page is not None:
+        meta["page"] = page
+    if scope in ("domestic", "foreign"):
+        meta["policy"] = scope
+    logger.info("Loaded curated tables sidecar for %r (page=%s)", base, page)
+    return [Document(page_content=text, metadata=meta)]
 
 
 @traceable(name="load_documents")

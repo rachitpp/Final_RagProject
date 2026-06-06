@@ -31,8 +31,13 @@ logger = get_logger(__name__)
 _PINNED = [
     {"sig": "Delhi, Mumbai, Calcutta",             "policy": "domestic", "kind": "classification"},
     {"sig": "LODGING / BOARDING (Rupees per day)", "policy": "domestic", "kind": "rate"},
-    {"sig": "Nepal & Bhutan",                      "policy": "foreign",  "kind": "classification"},
-    {"sig": "Categories / Countries",              "policy": "foreign",  "kind": "rate"},
+    # Foreign: one JOINED table (country category + countries + per-band rate in
+    # the same row, from the curated foreign.tables.md). The model kept resolving
+    # a by-exclusion country to Category C correctly but then reading the rate
+    # from a different row of the separate rate table; joining the category list
+    # and the rates removes that cross-table hop. Replaces the old split
+    # classification + rate pins (which are still retrievable, just not pinned).
+    {"sig": "Countries in this category",          "policy": "foreign",  "kind": "rate"},
 ]
 
 
