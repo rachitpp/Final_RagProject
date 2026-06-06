@@ -15,6 +15,7 @@ export default function AuthField({
   autoComplete,
   adornment,
   className,
+  autoFocus,
 }: {
   label: string;
   type?: string;
@@ -24,6 +25,7 @@ export default function AuthField({
   autoComplete?: string;
   adornment?: ReactNode;
   className?: string;
+  autoFocus?: boolean;
 }) {
   return (
     <label className={cn("block", className)}>
@@ -32,6 +34,7 @@ export default function AuthField({
       </span>
       <div className="mt-1 flex items-center gap-3 border-b border-rule-strong transition-colors duration-200 focus-within:border-gold">
         <input
+          autoFocus={autoFocus}
           type={type}
           value={value}
           onChange={(e) => onChange(e.target.value)}

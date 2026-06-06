@@ -147,6 +147,8 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "line above notes it was ASSUMED, state that assumption to the user in "
      "one short clause.\n\n"
 
+     "{employee_context}"
+
      "── STEP 1 — RESOLVE CATEGORY BEFORE FIGURES ──\n"
      "When a city or country is named, state its category (A / B / C, or "
      "whatever the applicable policy uses) from the context BEFORE giving "
@@ -348,6 +350,24 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "Question: {question}\n\n"
      "Answer:"),
 ])
+
+
+# Injected into ANSWER_PROMPT's {employee_context} slot when the caller is
+# authenticated and their band is known. The band is server-authoritative (read
+# from the DB per request, never typed by the user — see api/deps.py), so the
+# model can answer for that single band and must NOT fall back to the all-bands
+# table. When no band is known (anonymous / leave-only), the slot is "" and the
+# prompt's existing "answer for every band" behaviour stands.
+EMPLOYEE_BAND_CONTEXT = (
+    "── EMPLOYEE CONTEXT (KNOWN — DO NOT ASK) ──\n"
+    "The employee asking is in **Band {band}**. Their band is KNOWN, not "
+    "missing. Answer for Band {band} ONLY: read the row/grouping that Band "
+    "{band} falls under from the retrieved rate table and give that single "
+    "result. Do NOT produce the all-bands table, and do NOT add any 'let me "
+    "know your band' note. The 'MISSING DETAILS (BAND ...)' instructions below "
+    "do NOT apply — the band is supplied here. When you call "
+    "`compute_entitlement`, pass line items for Band {band} only.\n\n"
+)
 
 
 # ─────────────────────────────────────────────────────────────────────

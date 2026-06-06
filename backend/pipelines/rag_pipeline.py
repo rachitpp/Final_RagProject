@@ -1,5 +1,5 @@
 import json
-from typing import Iterator
+from typing import Iterator, Protocol
 from langsmith import traceable
 from langchain_core.messages import ToolMessage
 
@@ -16,13 +16,26 @@ from retrieval.formatter import format_docs
 from retrieval.hyde import generate_hyde
 from retrieval.rewrite import rewrite_query
 from llm.models import get_llm
-from llm.prompts import ANSWER_PROMPT, LEAVE_ANSWER_PROMPT, LEAVE_ADDENDUM
+from llm.prompts import (
+    ANSWER_PROMPT,
+    LEAVE_ANSWER_PROMPT,
+    LEAVE_ADDENDUM,
+    EMPLOYEE_BAND_CONTEXT,
+)
 from llm.tools import compute_entitlement, compute_leave_ledger
 from config.documents import capabilities_for
 from config.settings import settings
 from utils.logger import get_logger
 
 logger = get_logger(__name__)
+
+
+class UserContext(Protocol):
+    """Structural type for the authenticated caller. The pipeline reads only the
+    band, so it depends on this shape — not on api.schemas.UserProfile — keeping
+    the retrieval layer decoupled from the web layer. UserProfile satisfies it."""
+    band: int
+
 
 # The model may need one round to call the calculator and another to write the
 # answer; a few rounds is ample headroom, bounded so it can't loop forever.
@@ -134,13 +147,22 @@ class RAGPipeline:
         return candidates, rewritten, route
 
     def stream_answer(
-        self, query: str, history: list | None = None
+        self,
+        query: str,
+        history: list | None = None,
+        user_profile: "UserContext | None" = None,
     ) -> Iterator[str]:
         """Run the full pipeline and yield the answer token-by-token.
 
         `history` is a list of prior (user, assistant) turns, used ONLY to
         resolve follow-ups during rewrite. The pipeline stores nothing; the
         caller appends the completed turn to its own memory.
+
+        `user_profile` is the authenticated caller (or None when anonymous).
+        We read only `.band` from it; when a band is known and a TRAVEL scope is
+        active, we inject it so the answer is scoped to that band instead of the
+        all-bands fallback. Duck-typed to keep the pipeline decoupled from the
+        API layer. Leave is band-agnostic, so the band is never used there.
 
         If the model calls the calculator, we run it, feed the exact results
         back, and stream the next round — so tool rounds stay invisible and
@@ -161,10 +183,17 @@ class RAGPipeline:
 
         if route.trip_type is not None:
             # Travel (optionally + leave): the tuned travel prompt drives it.
+            # If we know the caller's band, scope the answer to it (server-
+            # authoritative); otherwise the prompt answers for every band.
+            band = getattr(user_profile, "band", None)
+            employee_context = (
+                EMPLOYEE_BAND_CONTEXT.format(band=band) if band is not None else ""
+            )
             messages = ANSWER_PROMPT.format_messages(
                 context=context,
                 question=rewritten,
                 trip_type=_trip_label(route.trip_type, route.assumed),
+                employee_context=employee_context,
             )
             if "leave" in route.scopes:
                 messages[0].content = messages[0].content + "\n\n" + LEAVE_ADDENDUM

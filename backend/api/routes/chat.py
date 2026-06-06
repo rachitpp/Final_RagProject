@@ -8,12 +8,18 @@ so the blocking LLM stream doesn't stall the event loop.
 from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
-from api.deps import get_pipeline, get_sessions
-from api.schemas import ChatRequest, ResetRequest
+from api.deps import get_current_user, get_pipeline, get_sessions
+from api.schemas import ChatRequest, ResetRequest, UserProfile
 from conversation.store import ConversationStore
 from pipelines.rag_pipeline import RAGPipeline
 
 router = APIRouter()
+
+
+def _session_key(user: UserProfile, conversation_id: str) -> str:
+    """Namespace the client-supplied conversation_id by employee_id so a user
+    can never read or reset another user's memory by guessing/replaying an id."""
+    return f"{user.employee_id}:{conversation_id}"
 
 
 @router.post("/chat")
@@ -21,13 +27,14 @@ def chat(
     body: ChatRequest,
     pipeline: RAGPipeline = Depends(get_pipeline),
     sessions: ConversationStore = Depends(get_sessions),
+    user: UserProfile = Depends(get_current_user),
 ) -> StreamingResponse:
-    memory = sessions.get(body.conversation_id)
+    memory = sessions.get(_session_key(user, body.conversation_id))
     history = memory.turns()
 
     def generate():
         parts: list[str] = []
-        for piece in pipeline.stream_answer(body.question, history):
+        for piece in pipeline.stream_answer(body.question, history, user_profile=user):
             parts.append(piece)
             yield piece
         # Save only after a complete stream (skipped if the client disconnects).
@@ -40,7 +47,8 @@ def chat(
 def reset(
     body: ResetRequest,
     sessions: ConversationStore = Depends(get_sessions),
+    user: UserProfile = Depends(get_current_user),
 ) -> dict:
     """Clear a conversation's history (the 'New chat' action)."""
-    sessions.reset(body.conversation_id)
+    sessions.reset(_session_key(user, body.conversation_id))
     return {"status": "reset"}

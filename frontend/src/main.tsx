@@ -1,21 +1,54 @@
 import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
-import { createBrowserRouter, RouterProvider, Navigate } from "react-router-dom";
+import {
+  createBrowserRouter,
+  Navigate,
+  RouterProvider,
+} from "react-router-dom";
 import { Toaster } from "sonner";
 import "./index.css";
-import ChatPage from "@/pages/ChatPage";
-import AuthPage from "@/pages/AuthPage";
+import { RequireAuth, RequireAnon } from "@/components/guards";
+import { AuthProvider } from "@/hooks/AuthProvider";
+import { AuthPage, ChatPage, RootLayout } from "@/routes";
 
 const router = createBrowserRouter([
-  { path: "/", element: <ChatPage /> },
-  { path: "/login", element: <AuthPage initialMode="login" /> },
-  { path: "/activate", element: <AuthPage initialMode="activate" /> },
-  { path: "*", element: <Navigate to="/" replace /> },
+  {
+    element: <RootLayout />,
+    children: [
+      {
+        path: "/",
+        element: (
+          <RequireAuth>
+            <ChatPage />
+          </RequireAuth>
+        ),
+      },
+      {
+        path: "/login",
+        element: (
+          <RequireAnon>
+            <AuthPage initialMode="login" />
+          </RequireAnon>
+        ),
+      },
+      {
+        path: "/activate",
+        element: (
+          <RequireAnon>
+            <AuthPage initialMode="activate" />
+          </RequireAnon>
+        ),
+      },
+      { path: "*", element: <Navigate to="/" replace /> },
+    ],
+  },
 ]);
 
 createRoot(document.getElementById("root")!).render(
   <StrictMode>
-    <RouterProvider router={router} />
+    <AuthProvider>
+      <RouterProvider router={router} />
+    </AuthProvider>
     <Toaster
       position="bottom-right"
       duration={2600}

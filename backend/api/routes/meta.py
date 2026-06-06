@@ -6,6 +6,7 @@ the frontend's sidebar can show "what's indexed".
 from fastapi import APIRouter, Depends
 
 from api.deps import get_pipeline
+from config.documents import title_for, topic_for
 from config.settings import settings
 from pipelines.rag_pipeline import RAGPipeline
 
@@ -31,7 +32,14 @@ def library(pipeline: RAGPipeline = Depends(get_pipeline)) -> dict:
     total_pages = 0
     for name in sorted(pages_by_source):
         n = len(pages_by_source[name]) or None
-        documents.append({"name": name, "pages": n})
+        documents.append(
+            {
+                "name": name,
+                "title": title_for(name),
+                "topic": topic_for(name),
+                "pages": n,
+            }
+        )
         if n:
             total_pages += n
 

@@ -1,4 +1,4 @@
-import { Fragment, type ReactNode } from "react";
+import { Fragment, memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FileText } from "lucide-react";
@@ -106,12 +106,26 @@ const components: Components = {
   ),
 };
 
-export default function Markdown({ content }: { content: string }) {
+// Memoized: react-markdown re-parses `content` on every render, so without this a
+// streamed token would re-parse every already-finished answer on the page too.
+// With it, only the bubble whose `content` actually changed re-parses.
+const Markdown = memo(function Markdown({
+  content,
+  streaming = false,
+}: {
+  content: string;
+  streaming?: boolean;
+}) {
   return (
-    <div className="assistant-prose font-serif text-[0.95rem] text-ink">
+    <div
+      className="assistant-prose font-serif text-[0.95rem] text-ink"
+      data-streaming={streaming || undefined}
+    >
       <ReactMarkdown remarkPlugins={[remarkGfm]} components={components}>
         {content}
       </ReactMarkdown>
     </div>
   );
-}
+});
+
+export default Markdown;

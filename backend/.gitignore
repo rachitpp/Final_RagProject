@@ -28,6 +28,12 @@ chromaDb/
 # PDFs (your corpus - usually too large for git)
 *.pdf
 
+# Roster + auth data (PII + password hashes — never commit)
+*.xlsx
+*.db
+*.sqlite3
+/data/
+
 # LangSmith / tracing data (if cached locally)
 .langsmith/
 

@@ -7,10 +7,13 @@ import {
   type FormEvent,
   type KeyboardEvent,
 } from "react";
-import { ArrowUp, Square } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { Dialog } from "radix-ui";
+import { ArrowDown, ArrowUp, Menu, Plus, Square } from "lucide-react";
 import { useChatStream, type Message } from "@/hooks/useChatStream";
 import { useTheme } from "@/hooks/useTheme";
-import Sidebar from "@/components/Sidebar";
+import { useAuth } from "@/hooks/useAuth";
+import Sidebar, { SidebarContent } from "@/components/Sidebar";
 import Welcome from "@/components/Welcome";
 import ChatMessage from "@/components/ChatMessage";
 
@@ -19,14 +22,41 @@ interface Turn {
   assistant?: Message;
 }
 
+/** Honor the OS "reduce motion" setting for our JS-driven scrolls. */
+function scrollBehavior(): ScrollBehavior {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches
+    ? "auto"
+    : "smooth";
+}
+
 export default function ChatPage() {
-  const { messages, isStreaming, send, stop, reset } = useChatStream();
+  const { messages, isStreaming, send, stop, reset, retry } = useChatStream();
   const { theme, toggle } = useTheme();
+  const { logout, profile } = useAuth();
+  const navigate = useNavigate();
   const [input, setInput] = useState("");
+  const [drawerOpen, setDrawerOpen] = useState(false);
+  const [showScrollDown, setShowScrollDown] = useState(false);
+  const [liveStatus, setLiveStatus] = useState("");
+
+  const onSignOut = () => {
+    logout();
+    navigate("/login", { replace: true });
+  };
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const lastTurnRef = useRef<HTMLDivElement>(null);
   const turnCount = useRef(0);
+  const wasStreaming = useRef(false);
+
+  const sidebarProps = {
+    onNewChat: reset,
+    disabled: isStreaming,
+    theme,
+    onToggleTheme: toggle,
+    onSignOut,
+    user: profile,
+  };
 
   // Pair the flat message list into (question, answer) turns.
   const turns = useMemo<Turn[]>(() => {
@@ -50,14 +80,47 @@ export default function ChatPage() {
     el.style.height = `${Math.min(el.scrollHeight, 200)}px`;
   }, [input]);
 
+  // Focus the composer on load and whenever a stream finishes, so the next
+  // question can be typed without reaching for the mouse.
+  useEffect(() => {
+    if (!isStreaming) taRef.current?.focus();
+  }, [isStreaming]);
+
+  // Announce stream start/finish ONCE via a single polite status region, instead
+  // of letting the answer bubble re-announce its whole growing text every token.
+  useEffect(() => {
+    if (isStreaming && !wasStreaming.current) {
+      setLiveStatus("Generating answer…");
+    } else if (!isStreaming && wasStreaming.current) {
+      // On failure the inline error (role="alert") announces; keep status quiet.
+      setLiveStatus(messages.at(-1)?.error ? "" : "Answer ready.");
+    }
+    wasStreaming.current = isStreaming;
+  }, [isStreaming, messages]);
+
   // On a NEW question, lift it to the top of the view so the answer has room
   // to stream in below it (ChatGPT-style), instead of staying pinned low.
   useEffect(() => {
     if (turns.length > turnCount.current) {
-      lastTurnRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
+      lastTurnRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
     }
     turnCount.current = turns.length;
   }, [turns.length]);
+
+  // Show a "jump to latest" affordance only once the reader has scrolled well
+  // up past the current turn (the last turn reserves ~a viewport of space, so
+  // the trigger sits beyond that to avoid firing during normal reading).
+  const onScroll = () => {
+    const el = scrollRef.current;
+    if (!el) return;
+    const distance = el.scrollHeight - el.scrollTop - el.clientHeight;
+    setShowScrollDown(turns.length > 0 && distance > el.clientHeight * 1.2);
+  };
+
+  const scrollToBottom = () => {
+    const el = scrollRef.current;
+    if (el) el.scrollTo({ top: el.scrollHeight, behavior: scrollBehavior() });
+  };
 
   const submit = () => {
     const q = input.trim();
@@ -87,21 +150,58 @@ export default function ChatPage() {
 
   return (
     <div className="relative flex h-screen overflow-hidden bg-paper text-ink">
-      <Sidebar
-        onNewChat={reset}
-        disabled={isStreaming}
-        theme={theme}
-        onToggleTheme={toggle}
-      />
+      {/* Single polite live region for streaming status (a11y) — see effect above. */}
+      <div role="status" className="sr-only">
+        {liveStatus}
+      </div>
+      <Sidebar {...sidebarProps} />
+
+      {/* mobile slide-in drawer — Radix handles focus trap, Escape, scroll lock */}
+      <Dialog.Root open={drawerOpen} onOpenChange={setDrawerOpen}>
+        <Dialog.Portal>
+          <Dialog.Overlay className="fixed inset-0 z-40 bg-black/50 backdrop-blur-[2px] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=open]:animate-in data-[state=open]:fade-in-0 md:hidden" />
+          <Dialog.Content className="fixed inset-y-0 left-0 z-50 flex w-72 max-w-[80vw] flex-col border-r border-rule bg-paper-2 px-5 py-7 shadow-[8px_0_32px_-12px_rgba(0,0,0,0.6)] outline-none data-[state=closed]:animate-out data-[state=closed]:slide-out-to-left data-[state=open]:animate-in data-[state=open]:slide-in-from-left md:hidden">
+            <Dialog.Title className="sr-only">Menu</Dialog.Title>
+            <Dialog.Description className="sr-only">
+              Library, account and appearance.
+            </Dialog.Description>
+            <SidebarContent {...sidebarProps} onNavigate={() => setDrawerOpen(false)} />
+          </Dialog.Content>
+        </Dialog.Portal>
+      </Dialog.Root>
 
       <div className="relative z-10 flex flex-1 flex-col">
-        {/* top-edge fade — content dissolves into the paper */}
-        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 h-9 bg-gradient-to-b from-paper to-transparent" />
+        {/* mobile top bar — the only nav on small screens (desktop uses the rail) */}
+        <header className="flex items-center gap-2 border-b border-rule px-3 py-2.5 md:hidden">
+          <button
+            type="button"
+            onClick={() => setDrawerOpen(true)}
+            aria-label="Open menu"
+            className="rounded-md p-1.5 text-ink-soft transition duration-200 hover:bg-paper-3 hover:text-ink"
+          >
+            <Menu className="h-5 w-5" />
+          </button>
+          <span className="font-serif text-base font-bold tracking-tight text-ink">
+            <span className="text-gold" aria-hidden="true">◐</span> Policy Assistant
+          </span>
+          <button
+            type="button"
+            onClick={reset}
+            disabled={isStreaming}
+            aria-label="New chat"
+            className="ml-auto rounded-md p-1.5 text-ink-soft transition duration-200 hover:bg-paper-3 hover:text-ink disabled:opacity-50"
+          >
+            <Plus className="h-5 w-5" />
+          </button>
+        </header>
 
-        <main ref={scrollRef} className="flex-1 overflow-y-auto">
+        {/* top-edge fade — content dissolves into the paper (desktop only) */}
+        <div className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden h-9 bg-gradient-to-b from-paper to-transparent md:block" />
+
+        <main ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
           <div className="mx-auto max-w-3xl px-5 py-10">
             {turns.length === 0 ? (
-              <Welcome onPick={pickStarter} />
+              <Welcome onPick={pickStarter} name={profile?.name} />
             ) : (
               turns.map((t, ti) => {
                 const isLast = ti === turns.length - 1;
@@ -116,6 +216,7 @@ export default function ChatPage() {
                       <ChatMessage
                         message={t.assistant}
                         isStreaming={isStreaming && isLast}
+                        onRetry={isLast ? () => retry(t.user.content) : undefined}
                       />
                     )}
                   </div>
@@ -128,6 +229,17 @@ export default function ChatPage() {
         {/* composer — pinned low, with a fade rising above it */}
         <div className="relative">
           <div className="pointer-events-none absolute inset-x-0 -top-10 h-10 bg-gradient-to-t from-paper to-transparent" />
+
+          {showScrollDown && (
+            <button
+              type="button"
+              onClick={scrollToBottom}
+              aria-label="Scroll to latest"
+              className="absolute -top-12 left-1/2 z-20 flex h-9 w-9 -translate-x-1/2 items-center justify-center rounded-full border border-rule-strong bg-paper-4 text-ink shadow-[0_8px_24px_-10px_rgba(0,0,0,0.5)] transition duration-200 hover:bg-paper-3"
+            >
+              <ArrowDown className="h-4 w-4" />
+            </button>
+          )}
 
           <div className="mx-auto max-w-3xl px-5 pb-5">
             <form

@@ -36,6 +36,16 @@ SCOPE_CAPABILITIES: dict[str, tuple[str, ...]] = {
     "leave": ("leave_ledger",),
 }
 
+# Scope -> employee-facing display title for the UI's "Policies" list. The
+# retrieval scope IS the policy's identity, so titles key off it (same shape as
+# SCOPE_CAPABILITIES). Keeps the sidebar from showing raw filenames like
+# "domestic travel.pdf"; the frontend maps the scope to an icon.
+SCOPE_TITLES: dict[str, str] = {
+    "domestic": "Domestic Travel",
+    "foreign": "Foreign Travel",
+    "leave": "Leave",
+}
+
 # Used only if an untracked PDF is ingested; the loader logs a warning so this
 # is never silent (the old filename-sniffing mis-tagged leave.pdf as domestic).
 DEFAULT_SCOPE = "domestic"
@@ -54,3 +64,23 @@ def capabilities_for(scopes) -> set[str]:
     for s in scopes:
         caps.update(SCOPE_CAPABILITIES.get(s, ()))
     return caps
+
+
+def _prettify(filename: str) -> str:
+    """Fallback title for an untracked PDF: 'some_policy.pdf' -> 'Some Policy'."""
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    return " ".join(stem.replace("_", " ").replace("-", " ").split()).title()
+
+
+def title_for(filename: str) -> str:
+    """Employee-facing title for a PDF — its registry title, else a prettified
+    filename (untracked files fall through rather than borrowing DEFAULT_SCOPE's
+    title, which would mislabel them)."""
+    scope = FILE_SCOPES.get(os.path.basename(filename).lower())
+    return SCOPE_TITLES[scope] if scope in SCOPE_TITLES else _prettify(filename)
+
+
+def topic_for(filename: str) -> str:
+    """Topic key the UI maps to an icon — the scope for tracked files, else
+    'policy' (a neutral default, never the misleading DEFAULT_SCOPE)."""
+    return FILE_SCOPES.get(os.path.basename(filename).lower(), "policy")

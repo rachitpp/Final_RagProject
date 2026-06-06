@@ -18,7 +18,8 @@
   --ink: #efe9e1; /* primary text */
   --ink-soft: #d7cfc3;
   --ink-muted: #b3aa9c;
-  --ink-faint: #8b8273;
+  --ink-faint: #9a9082; /* lifted from #8b8273 to clear WCAG AA (4.5:1) on raised
+                           surfaces (composer/sidebar paper-4) — labels & placeholders */
 
   --rule: #2a2824; /* hairlines */
   --rule-strong: #3a372f;
@@ -65,37 +66,38 @@
    them via var(), so the whole UI flips with this one block.
    ============================================================ */
 html.light {
-  /* Warm parchment, retuned for legibility. The old light values sat in too
-     narrow a band — raised surfaces barely separated from the canvas and the
-     hairlines all but vanished, so the eye had to work. This mirrors the dark
-     theme's logic instead: raised surfaces (bubble, composer, code, table
-     head) read as near-white cards that LIFT off a warm-cream canvas, the
-     rules are dark enough to actually draw structure, and the muted/faint inks
-     are deepened so every label, count and placeholder reads at a glance. */
-  --paper: #f1e9d7; /* canvas — warm cream */
-  --paper-2: #e7dec8; /* sidebar — gently recessed rail */
-  --paper-3: #ddd1b8; /* hover — darkens, so hovers clearly register */
-  --paper-4: #fffdf7; /* raised: bubble, composer, code, table head — near-white, lifts */
-  --paper-5: #d3c6aa; /* deepest — disabled / pressed */
+  /* Clean white, not cream. The old parchment was too saturated — canvas,
+     sidebar and cards all sat in one narrow beige band, so the UI read dingy
+     and flat. This keeps the canvas pure white and separates the surfaces by
+     LIGHTNESS instead of hue: white canvas → faint warm-gray sidebar →
+     slightly deeper gray raised surfaces (bubble, composer, code) that read as
+     soft cards via their border + shadow. Only a whisper of warmth remains in
+     the grays so the gold accent and the warm dark theme still feel like one
+     product; the inks stay deep enough to clear WCAG AA on every surface. */
+  --paper: #ffffff; /* canvas — clean white */
+  --paper-2: #f6f6f4; /* sidebar — faint warm gray, recedes from the canvas */
+  --paper-3: #eceae7; /* hover — a clear step down, so hovers register */
+  --paper-4: #f4f2ef; /* raised: bubble, composer, code, table head — soft gray card */
+  --paper-5: #e4e1dc; /* deepest — disabled / pressed */
 
-  --ink: #211e19; /* primary text — crisp near-black brown */
-  --ink-soft: #413a30; /* secondary */
-  --ink-muted: #5b5244; /* muted — deepened for legibility */
-  --ink-faint: #79705f; /* faint — deepened so labels & placeholders read */
+  --ink: #201d1a; /* primary text — near-black, a hair warm */
+  --ink-soft: #403a33; /* secondary */
+  --ink-muted: #57514a; /* muted */
+  --ink-faint: #6e6659; /* faint — clears AA on white and on the gray surfaces */
 
-  --rule: #cfc0a5; /* hairlines — visible now */
-  --rule-strong: #bdae90; /* strong borders — clearly defined */
+  --rule: #ebe9e5; /* hairlines */
+  --rule-strong: #d8d4cf; /* strong borders — defines cards/composer on white */
 
-  --gold: #8c6c34; /* accent — deeper, holds contrast on cream */
-  --gold-strong: #664d1f; /* editorial lede / strong accent */
-  --gold-bg: rgba(140, 108, 52, 0.1);
-  --gold-border: rgba(140, 108, 52, 0.32);
+  --gold: #8a6a30; /* accent — deep enough to hold contrast on white */
+  --gold-strong: #5f4a22; /* editorial lede / strong accent */
+  --gold-bg: rgba(138, 106, 48, 0.08);
+  --gold-border: rgba(138, 106, 48, 0.28);
   --sage: #5e7847;
-  --focus-halo: rgba(140, 108, 52, 0.25);
-  --destructive: #b53f2e;
+  --focus-halo: rgba(138, 106, 48, 0.25);
+  --destructive: #b23b2a;
 
-  --watermark: #2b2722;
-  --watermark-opacity: 0.05;
+  --watermark: #201d1a;
+  --watermark-opacity: 0.03;
 }
 
 @theme inline {
@@ -183,6 +185,10 @@ html.light {
   33% { opacity: 0; transform: translateY(-4px); }
   100% { opacity: 0; }
 }
+@keyframes stream-caret {
+  0%, 45% { opacity: 1; }
+  55%, 100% { opacity: 0; }
+}
 
 @layer base {
   * {
@@ -197,6 +203,25 @@ html.light {
   ::selection {
     background: var(--gold-bg);
     color: var(--gold-strong);
+  }
+  /* One on-brand keyboard-focus ring for everything that doesn't define its own.
+     The composer & auth fields opt out (they set `outline-none` and light their
+     own border) — their utility class wins over this base rule. */
+  :focus-visible {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+  /* Respect the OS "reduce motion" setting: neutralize entrance/looping
+     animations and snap transitions. JS-driven scrolls check the same query. */
+  @media (prefers-reduced-motion: reduce) {
+    *,
+    *::before,
+    *::after {
+      animation-duration: 0.01ms !important;
+      animation-iteration-count: 1 !important;
+      transition-duration: 0.01ms !important;
+      scroll-behavior: auto !important;
+    }
   }
   ::-webkit-scrollbar { width: 11px; height: 11px; }
   ::-webkit-scrollbar-track { background: transparent; }
@@ -273,6 +298,22 @@ html.light {
   letter-spacing: -0.006em;
   color: var(--gold-strong);
   margin-bottom: 0.9rem;
+}
+
+/* Streaming caret — a blinking bar trailing the last block while tokens arrive.
+   Rendered as a pseudo-element (not appended to the markdown text) so a partly
+   streamed table/code fence can't mis-parse. The last child is almost always a
+   paragraph, so the caret sits inline right after the final word. */
+.assistant-prose[data-streaming] > *:last-child::after {
+  content: "";
+  display: inline-block;
+  width: 0.55ch;
+  height: 1.05em;
+  margin-left: 0.12em;
+  vertical-align: text-bottom;
+  background: var(--ink-muted);
+  border-radius: 1px;
+  animation: stream-caret 1.05s steps(1, end) infinite;
 }
 
 /* Sonner toasts — by default every toast stretches to a fixed 356px, so a

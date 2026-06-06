@@ -1,10 +1,13 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
-import { ArrowRight, BadgeCheck, Moon, ShieldCheck, Sun } from "lucide-react";
+import { useNavigate } from "react-router-dom";
+import { toast } from "sonner";
+import { ArrowRight, BadgeCheck, Loader2, Moon, ShieldCheck, Sun } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
+import { useAuth } from "@/hooks/useAuth";
 import AuthField from "@/components/auth/AuthField";
 
 /**
- * Auth screen — PRESENTATIONAL MOCKUP ONLY (login + first-time activation).
+ * Auth screen — login + first-time activation, wired to the backend.
  *
  * Login and activation live in ONE mounted component so switching between them is
  * a smooth in-place morph (the bordered box animates its height, the copy
@@ -15,7 +18,8 @@ import AuthField from "@/components/auth/AuthField";
  * By design the user only ever provides employee_id + password (+ email & a
  * password to activate) — band/grade and every entitlement attribute are
  * server-authoritative, never typed here, so personalization can't be spoofed.
- * Submit is a no-op stub; wire to POST /login or /activate later.
+ * Submit calls POST /auth/login or /auth/activate (both return a JWT, so a
+ * successful activation also signs the user in) and redirects to the chat.
  */
 type Mode = "login" | "activate";
 
@@ -24,13 +28,10 @@ const COPY: Record<Mode, { title: string; subtitle: string }> = {
   activate: { title: "Activate account", subtitle: "Set a password to get started." },
 };
 
-const onSubmit = (e: FormEvent) => {
-  e.preventDefault();
-  // Mockup: intentionally does nothing.
-};
-
 export default function AuthPage({ initialMode }: { initialMode: Mode }) {
   const { theme, toggle } = useTheme();
+  const { login, activate } = useAuth();
+  const navigate = useNavigate();
   const [mode, setMode] = useState<Mode>(initialMode);
 
   const [employeeId, setEmployeeId] = useState("");
@@ -38,16 +39,45 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
+  const [submitting, setSubmitting] = useState(false);
 
   const isLogin = mode === "login";
   const mismatch = !isLogin && confirm !== "" && password !== confirm;
-  const canSubmit = isLogin
-    ? employeeId.trim() !== "" && password !== ""
-    : employeeId.trim() !== "" &&
-      email.trim() !== "" &&
-      password !== "" &&
-      confirm !== "" &&
-      !mismatch;
+  const canSubmit =
+    !submitting &&
+    (isLogin
+      ? employeeId.trim() !== "" && password !== ""
+      : employeeId.trim() !== "" &&
+        email.trim() !== "" &&
+        password !== "" &&
+        confirm !== "" &&
+        !mismatch);
+
+  const onSubmit = async (e: FormEvent) => {
+    e.preventDefault();
+    if (!canSubmit) return;
+    setSubmitting(true);
+    try {
+      if (isLogin) {
+        await login(employeeId.trim(), password);
+      } else {
+        await activate(employeeId.trim(), email.trim(), password);
+      }
+      // Both endpoints return a JWT, so we're authenticated either way.
+      navigate("/", { replace: true });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : "Something went wrong.");
+      setSubmitting(false);
+    }
+  };
+
+  // Switch between login/activate without dragging stale field state or a
+  // half-typed error across the morph.
+  const switchMode = () => {
+    setMode(isLogin ? "activate" : "login");
+    setPassword("");
+    setConfirm("");
+  };
 
   // Morph the box height between the two forms (and when the mismatch hint shows
   // /hides) by measuring the live content and animating to its height.
@@ -100,6 +130,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
             <div ref={contentRef} key={`form-${mode}`} className="animate-auth-swap [animation-delay:60ms]">
               <form onSubmit={onSubmit}>
                 <AuthField
+                  autoFocus
                   label="Employee ID"
                   value={employeeId}
                   onChange={setEmployeeId}
@@ -153,8 +184,17 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                   disabled={!canSubmit}
                   className="group/btn mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 font-sans text-[0.9rem] font-medium text-paper transition duration-200 hover:bg-ink-soft disabled:bg-paper-5 disabled:text-ink-faint"
                 >
-                  {isLogin ? "Sign in" : "Activate account"}
-                  <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
+                  {submitting ? (
+                    <>
+                      {isLogin ? "Signing in" : "Activating"}
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                    </>
+                  ) : (
+                    <>
+                      {isLogin ? "Sign in" : "Activate account"}
+                      <ArrowRight className="h-4 w-4 transition-transform duration-200 group-hover/btn:translate-x-0.5" />
+                    </>
+                  )}
                 </button>
               </form>
             </div>
@@ -165,7 +205,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         <div key={`switch-${mode}`} className="mt-6 animate-auth-swap text-center [animation-delay:120ms]">
           <button
             type="button"
-            onClick={() => setMode(isLogin ? "activate" : "login")}
+            onClick={switchMode}
             className="font-sans text-[0.82rem] text-ink-muted underline-offset-4 transition duration-200 hover:text-gold hover:underline"
           >
             {isLogin

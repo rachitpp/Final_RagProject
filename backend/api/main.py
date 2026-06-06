@@ -1,6 +1,6 @@
 """FastAPI entry point.
 
-Run from the `backend/` directory so relative paths (.env, ./Project_123.json)
+Run from the `backend/` directory so relative paths (.env, ./Project-123.json)
 resolve:
 
     cd backend
@@ -16,9 +16,11 @@ load_dotenv()  # load .env (Vertex creds, Qdrant key) before building the pipeli
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from config.settings import settings
 from pipelines.rag_pipeline import RAGPipeline
 from conversation.store import ConversationStore
-from api.routes import chat, health, meta
+from db.session import init_db
+from api.routes import auth, chat, health, meta
 
 logging.basicConfig(
     level=logging.INFO,
@@ -31,6 +33,18 @@ ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    # Fail fast if the JWT secret is missing or weak (e.g. .env not loaded), rather
+    # than booting and 500-ing on the first login. settings reads it from the
+    # JWT_SECRET env var, which load_dotenv() above has already populated. HS256
+    # wants >= 32 bytes (256 bits) of key; `secrets.token_urlsafe(48)` clears that.
+    if len(settings.jwt_secret) < 32:
+        raise RuntimeError(
+            "JWT_SECRET is missing or too short (need >= 32 chars). Set a strong "
+            "value in backend/.env, e.g. `python -c \"import secrets; "
+            "print(secrets.token_urlsafe(48))\"`."
+        )
+    # Ensure the users table exists (no-op if already created by the importer).
+    init_db()
     # Build the heavy pipeline ONCE (loads vector store, BM25, pinned tables).
     app.state.pipeline = RAGPipeline()
     # Per-conversation memory store (keyed by conversation_id).
@@ -51,5 +65,6 @@ app.add_middleware(
 )
 
 app.include_router(health.router)
+app.include_router(auth.router)
 app.include_router(chat.router)
 app.include_router(meta.router)
