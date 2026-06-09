@@ -36,6 +36,21 @@ class Settings:
     login_rate_max_attempts: int = 5
     login_rate_window_seconds: int = 60
 
+    # --- API / CORS ---
+    # Browser origins allowed to call the API (comma-separated). Defaults to the
+    # Vite dev server; set CORS_ALLOW_ORIGINS to the deployed frontend origin(s)
+    # in production — the localhost default will block a real browser frontend.
+    cors_allow_origins: tuple[str, ...] = field(
+        default_factory=lambda: tuple(
+            o.strip()
+            for o in os.environ.get(
+                "CORS_ALLOW_ORIGINS",
+                "http://localhost:5173,http://127.0.0.1:5173",
+            ).split(",")
+            if o.strip()
+        )
+    )
+
     # --- Chunking ---
     # The band rate matrix renders to ~1.1k chars as one self-describing table
     # (loader stitches it back together across the PDF page break). A 1000-char
@@ -63,7 +78,14 @@ class Settings:
     llm_max_tokens: int = 2048
 
     # --- Vector store (Qdrant Cloud) ---
-    qdrant_url: str = "https://d42fb55f-4096-4fbf-8b02-a438145dfd84.us-east4-0.gcp.cloud.qdrant.io"  # from Qdrant Cloud dashboard
+    # Qdrant Cloud endpoint. Env-overridable (12-factor) so a deploy can point at
+    # a different cluster without a code change; the default is the demo cluster.
+    qdrant_url: str = field(
+        default_factory=lambda: os.environ.get(
+            "QDRANT_URL",
+            "https://d42fb55f-4096-4fbf-8b02-a438145dfd84.us-east4-0.gcp.cloud.qdrant.io",
+        )
+    )
     qdrant_collection: str = "rag_documents"
     qdrant_vector_size: int = 768          # text-embedding-004 -> 768 dims
 

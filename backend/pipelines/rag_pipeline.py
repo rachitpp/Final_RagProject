@@ -209,20 +209,21 @@ class RAGPipeline:
         llm = self.llm.bind_tools(tools) if tools else self.llm
 
         for _ in range(_MAX_TOOL_ROUNDS):
-            round_pieces: list[str] = []
             gathered = None
             for chunk in llm.stream(messages):
                 piece = getattr(chunk, "content", None) or ""
                 if piece:
-                    round_pieces.append(piece)
+                    # Stream live, token-by-token. A tool-calling round carries
+                    # empty content (the model emits tool calls, not prose), so
+                    # nothing leaks here on those rounds — only the real answer
+                    # streams out. We still accumulate `gathered` below to read
+                    # the round's tool calls and to append the assistant turn.
+                    yield piece
                 gathered = chunk if gathered is None else gathered + chunk
 
             tool_calls = getattr(gathered, "tool_calls", None) if gathered else None
             if not tool_calls:
-                # Final round — no tool requested, so stream the answer out.
-                for piece in round_pieces:
-                    yield piece
-                break
+                return  # no tool requested -> the answer is complete
 
             # Tool round: record the model's request + each result, then loop.
             messages.append(gathered)
@@ -231,3 +232,11 @@ class RAGPipeline:
                     content=self._run_tool(call),
                     tool_call_id=call["id"],
                 ))
+
+        # Tool rounds exhausted without a final prose answer (the model kept
+        # requesting tools). Make ONE last pass with tools unbound so it must
+        # write an answer — guaranteeing the user never gets an empty reply.
+        for chunk in self.llm.stream(messages):
+            piece = getattr(chunk, "content", None) or ""
+            if piece:
+                yield piece

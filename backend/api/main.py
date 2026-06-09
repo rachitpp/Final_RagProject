@@ -27,10 +27,6 @@ logging.basicConfig(
     format="%(asctime)s  %(levelname)-7s  %(name)s  %(message)s",
 )
 
-# Frontend dev origin (Vite). Add the deployed origin here later.
-ALLOWED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
-
-
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     # Fail fast if the JWT secret is missing or weak (e.g. .env not loaded), rather
@@ -58,7 +54,9 @@ app = FastAPI(title="RAG Assistant API", lifespan=lifespan)
 
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=ALLOWED_ORIGINS,
+    # Configurable via CORS_ALLOW_ORIGINS (see config/settings.py); defaults to
+    # the Vite dev origin. Set the deployed frontend origin(s) in production.
+    allow_origins=list(settings.cors_allow_origins),
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
