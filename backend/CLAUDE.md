@@ -41,9 +41,10 @@ there is no server-rendered UI in the backend.
 
 - **Run from inside `backend/`** so relative paths (`.env`, service-account JSON)
   resolve.
-- **Windows:** `pip install -r requirements_win.txt` (not `requirements.txt` —
-  it pins `uvloop`, which won't build on Windows). Create the venv with
-  `python -m venv venv`, then call `venv\Scripts\python` explicitly.
+- **Install:** `pip install -r requirements.txt` on every platform — `uvloop` is
+  marked `platform_system != "Windows"` (it won't build on Windows; uvicorn runs
+  without it). Create the venv with `python -m venv venv`, then call
+  `venv\Scripts\python` explicitly.
 - Needs `backend/.env` with Vertex service-account creds + Qdrant API key.
 - Memory is in-process (single-process demo); swap `ConversationStore` for
   Redis/DB for persistence or multi-process.

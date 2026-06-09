@@ -1,8 +1,10 @@
 # Auth + Personalization + Leave Policy — Design Decisions
 
+> ✅ **IMPLEMENTED.** These decisions are now built and shipped — see
+> [`PROGRESS.md`](PROGRESS.md). Kept as the design record behind the implementation.
+>
 > Decisions record from the design discussion on **2026-06-04**. This refines
 > the inferred plan in [`ROADMAP.md`](ROADMAP.md) into concrete, agreed choices.
-> Nothing here is built yet — it is the spec to build against.
 
 ## The milestone in one line
 

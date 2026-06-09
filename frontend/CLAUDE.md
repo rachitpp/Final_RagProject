@@ -15,7 +15,7 @@ Project-wide rules: root [`CLAUDE.md`](../CLAUDE.md). Full narrative:
 - `src/lib/api.ts` — `streamChat()` (reads `POST /chat` body as a stream),
   `resetConversation()`, `fetchLibrary()`.
 - `src/components/` — `Sidebar`, `Welcome`, `ChatMessage`, `Markdown`
-  (react-markdown + remark-gfm), `ThinkingIndicator`, `ui/button`.
+  (react-markdown + remark-gfm), `ThinkingIndicator`.
 - `src/hooks/useTheme.ts` — light/dark. Toasts via `sonner`.
 
 ## Frontend-specific rules
@@ -33,6 +33,6 @@ Project-wide rules: root [`CLAUDE.md`](../CLAUDE.md). Full narrative:
 
 - **Requires Node.js 18+ on PATH** (`node -v`). `npm` failing with "not
   recognized" means Node isn't installed/on PATH — install it, reopen the terminal.
-- The backend's CORS allowlist (`api/main.py`) only includes `localhost:5173`
-  and `127.0.0.1:5173`; add the deployed origin there before deploying.
-- `README.md` here is still the **stock Vite template** — not app docs.
+- The backend's CORS allowlist defaults to `localhost:5173` / `127.0.0.1:5173`;
+  set `CORS_ALLOW_ORIGINS` (comma-separated) to the deployed frontend origin(s)
+  before deploying (see `backend/config/settings.py`).

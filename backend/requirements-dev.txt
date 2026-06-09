@@ -2,7 +2,6 @@
 # stay lean. Install on top of the runtime deps:
 #
 #   pip install -r requirements.txt -r requirements-dev.txt
-#   # on Windows: pip install -r requirements_win.txt -r requirements-dev.txt
 #
 # pytest's own deps (pluggy, iniconfig, pygments) are resolved by pip.
 pytest==9.0.3

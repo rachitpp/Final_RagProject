@@ -5,6 +5,10 @@ Claude loads every session see [`../CLAUDE.md`](../CLAUDE.md),
 [`../backend/CLAUDE.md`](../backend/CLAUDE.md), and
 [`../frontend/CLAUDE.md`](../frontend/CLAUDE.md).
 
+> ℹ️ **Partly out of date.** This narrative predates the auth layer and the
+> multi-domain (leave) router. For current, accurate status — auth, band-aware
+> answers, the leave scope — see [`PROGRESS.md`](PROGRESS.md).
+
 ---
 
 ## What this project is
@@ -79,9 +83,9 @@ index for filtering. Chunk size 1500 to keep whole rate tables intact.
 - `eval.py` — evaluation harness.
 - Docs: `backend/README.md`, `backend/SETUP.md`, `backend/PIPELINE.md`, `backend/OVERVIEW.md`.
 
-**Windows note:** `requirements.txt` pins `uvloop`, which does not build on
-Windows. Use `requirements_win.txt` (same list, `uvloop` removed) — uvicorn runs
-fine without it.
+**Windows note:** a single `requirements.txt` works on all platforms — `uvloop`
+carries a `platform_system != "Windows"` marker (it doesn't build on Windows;
+uvicorn runs fine without it).
 
 ---
 
@@ -130,7 +134,7 @@ rewrite follow-ups, and appends the completed turn after the stream finishes.
 ```bash
 # Terminal 1 — backend → http://localhost:8000
 cd backend
-# Windows: python -m venv venv  then  venv\Scripts\python -m pip install -r requirements_win.txt
+# Windows: python -m venv venv  then  venv\Scripts\python -m pip install -r requirements.txt
 venv\Scripts\python -m uvicorn api.main:app --reload --port 8000
 
 # Terminal 2 — frontend → http://localhost:5173

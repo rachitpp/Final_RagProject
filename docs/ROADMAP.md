@@ -1,5 +1,9 @@
 # Roadmap
 
+> ✅ **DELIVERED.** The milestone below (per-employee auth + band-aware
+> personalization) is built, hardened, and tested — see [`PROGRESS.md`](PROGRESS.md).
+> The text is kept as the original planning record.
+
 ## ⭐ Next major turning point: per-employee auth + band-aware personalization
 
 > Planned, not yet built — but the groundwork is already visible in the

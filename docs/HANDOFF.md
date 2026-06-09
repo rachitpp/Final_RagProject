@@ -1,5 +1,9 @@
 # Session Handoff — Auth + Band-Aware Answers
 
+> ⚠️ **SUPERSEDED — historical.** This plan described auth ("Piece A") as *not
+> started*. Auth is now fully built, hardened, and tested. For current status see
+> [`PROGRESS.md`](PROGRESS.md); this file is kept only for historical context.
+
 > Written at end of audit session (2026-06-05). Read this before starting
 > the next session so you know exactly what's done, what's decided, and
 > what to build first.
@@ -124,7 +128,7 @@ New file `backend/db/models.py`:
 - creates the table if it doesn't exist; never drops it
 
 ### Step 5 — `bcrypt`/`passlib` dependency
-Add `passlib[bcrypt]` to `requirements.txt` and `requirements_win.txt`.
+Add `passlib[bcrypt]` to `requirements.txt`.
 
 ### Step 6 — Auth routes
 New file `backend/api/routes/auth.py`:
