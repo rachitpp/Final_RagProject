@@ -4,28 +4,31 @@
 @import "@fontsource-variable/geist";
 
 /* ============================================================
-   Ink & Parchment — a warm, dark, editorial theme.
-   Warm near-black "paper" + warm off-white "ink", with a single
-   rationed parchment-gold accent reserved for citations & links.
+   Graphite & Parchment — a neutral dark editorial theme.
+   The surfaces are true neutral charcoals (ChatGPT-dark
+   territory — graphite, not brown-black) so the single rationed
+   parchment-gold accent reads as *the* warm note instead of
+   blending into warm surfaces. Reserved for citations & links.
    ============================================================ */
 :root {
-  --paper: #1c1b18; /* canvas */
-  --paper-2: #151412; /* sidebar */
-  --paper-3: #262420; /* hover */
-  --paper-4: #2c2a25; /* raised: user bubble, composer */
-  --paper-5: #3a372f;
+  --paper: #212121; /* canvas — neutral graphite */
+  --paper-2: #171717; /* sidebar — a step darker, recedes */
+  --paper-3: #2a2a2a; /* hover */
+  --paper-4: #2f2f2f; /* raised: user bubble, composer */
+  --paper-5: #3d3d3d;
 
-  --ink: #efe9e1; /* primary text */
-  --ink-soft: #d7cfc3;
-  --ink-muted: #b3aa9c;
-  --ink-faint: #9a9082; /* lifted from #8b8273 to clear WCAG AA (4.5:1) on raised
-                           surfaces (composer/sidebar paper-4) — labels & placeholders */
+  --ink: #ececec; /* primary text — neutral off-white */
+  --ink-soft: #d3d3d3;
+  --ink-muted: #b0b0b0;
+  --ink-faint: #9a9a9a; /* clears WCAG AA (4.5:1) on raised surfaces
+                           (composer/sidebar paper-4) — labels & placeholders */
 
-  --rule: #2a2824; /* hairlines */
-  --rule-strong: #3a372f;
+  --rule: #303030; /* hairlines */
+  --rule-strong: #424242;
 
   --gold: #d3b98c; /* parchment gold — accent */
-  --gold-strong: #f3e6cf; /* editorial lede / bright accent */
+  --gold-strong: #f5f1e8; /* editorial lede / bright accent — near-white with a
+                             faint warm tint (deliberately not pure white) */
   --gold-bg: rgba(211, 185, 140, 0.09);
   --gold-border: rgba(211, 185, 140, 0.26);
   --sage: #8aa678; /* calm "ready" status */
@@ -39,7 +42,7 @@
   --radius: 0.75rem;
   --background: var(--paper);
   --foreground: var(--ink);
-  --card: #1f1d1a;
+  --card: #262626;
   --card-foreground: var(--ink);
   --popover: var(--paper-2);
   --popover-foreground: var(--ink);
@@ -151,6 +154,7 @@ html.light {
   --animate-user-in: user-in 600ms var(--ease-soft) both;
   --animate-msg-in: msg-in 640ms var(--ease-soft) both;
   --animate-auth-swap: auth-swap 540ms var(--ease-soft) both;
+  --animate-auth-shake: auth-shake 360ms var(--ease) both;
 }
 
 @keyframes rise {
@@ -168,6 +172,13 @@ html.light {
 @keyframes auth-swap {
   from { opacity: 0; transform: translateY(6px); }
   to { opacity: 1; transform: translateY(0); }
+}
+/* rejected-credentials cue on the auth card — small lateral shake, settles fast */
+@keyframes auth-shake {
+  10%, 90% { transform: translateX(-1px); }
+  20%, 80% { transform: translateX(2px); }
+  30%, 50%, 70% { transform: translateX(-4px); }
+  40%, 60% { transform: translateX(4px); }
 }
 @keyframes glyph-breathe {
   0%, 100% { opacity: 0.32; transform: scale(0.94); }

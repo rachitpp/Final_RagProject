@@ -1,6 +1,6 @@
 import { memo, useState } from "react";
 import { toast } from "sonner";
-import { AlertTriangle, Check, Copy, RotateCw } from "lucide-react";
+import { AlertTriangle, Check, Copy, Pencil, RotateCw } from "lucide-react";
 import Markdown from "@/components/Markdown";
 import SourcesPanel from "@/components/SourcesPanel";
 import ThinkingIndicator from "@/components/ThinkingIndicator";
@@ -14,11 +14,16 @@ const ChatMessage = memo(function ChatMessage({
   message,
   isStreaming,
   onRetry,
+  onEdit,
 }: {
   message: Message;
   isStreaming: boolean;
-  /** Provided only for the latest turn; renders an inline Retry when it errored. */
+  /** Provided only for the latest turn; renders inline Retry on error and
+   *  Regenerate on success. */
   onRetry?: () => void;
+  /** User turns only: puts this question back in the composer for re-asking.
+   *  Must be referentially stable (see memo note above). */
+  onEdit?: (content: string) => void;
 }) {
   const [copied, setCopied] = useState(false);
 
@@ -35,12 +40,27 @@ const ChatMessage = memo(function ChatMessage({
 
   if (message.role === "user") {
     return (
-      <div className="flex animate-user-in flex-col items-end pt-5 pb-5">
+      <div className="group/user flex animate-user-in flex-col items-end pt-5 pb-5">
         <div className="mb-1.5 font-sans text-[0.7rem] font-semibold uppercase tracking-[0.12em] text-ink-soft">
           ◉&nbsp;&nbsp;You
         </div>
-        <div className="max-w-[70%] whitespace-pre-wrap rounded-[20px] bg-paper-4 px-4 py-2.5 font-sans text-[0.88rem] leading-relaxed text-ink">
-          {message.content}
+        <div className="flex w-full items-center justify-end gap-1.5">
+          {onEdit && (
+            // Hover-revealed on pointer devices, always visible on touch
+            // (no hover there); focus reveals it for keyboard users.
+            <button
+              type="button"
+              onClick={() => onEdit(message.content)}
+              aria-label="Edit and ask again"
+              title="Edit and ask again"
+              className="rounded-md p-1.5 text-ink-faint transition duration-200 hover:bg-paper-3 hover:text-ink focus-visible:opacity-100 md:opacity-0 md:group-hover/user:opacity-100"
+            >
+              <Pencil className="h-3.5 w-3.5" />
+            </button>
+          )}
+          <div className="max-w-[70%] whitespace-pre-wrap rounded-[20px] bg-paper-4 px-4 py-2.5 font-sans text-[0.88rem] leading-relaxed text-ink">
+            {message.content}
+          </div>
         </div>
       </div>
     );
@@ -92,7 +112,7 @@ const ChatMessage = memo(function ChatMessage({
       {!empty && !isStreaming && !message.error && (
         <>
           <SourcesPanel content={message.content} />
-          <div className="mt-3">
+          <div className="mt-3 flex items-center gap-2">
             <button
               type="button"
               onClick={copy}
@@ -102,6 +122,17 @@ const ChatMessage = memo(function ChatMessage({
               {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
               {copied ? "Copied" : "Copy"}
             </button>
+            {onRetry && (
+              <button
+                type="button"
+                onClick={onRetry}
+                aria-label="Regenerate answer"
+                className="inline-flex items-center gap-1.5 rounded-lg border border-rule-strong px-2.5 py-1 font-sans text-xs text-ink-muted transition duration-200 hover:bg-paper-3 hover:text-ink"
+              >
+                <RotateCw className="h-3.5 w-3.5" />
+                Regenerate
+              </button>
+            )}
           </div>
         </>
       )}

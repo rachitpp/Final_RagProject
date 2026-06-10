@@ -97,10 +97,28 @@ def create_vector_store(chunks: list[Document]) -> QdrantVectorStore:
 
 
 def load_vector_store() -> QdrantVectorStore:
-    """Connect to the existing Qdrant Cloud collection."""
+    """Connect to the existing Qdrant Cloud collection.
+
+    validate_collection_config=False: the default validation discovers the
+    embedding dimension by EMBEDDING A DUMMY TEXT, which forces a Google
+    OAuth + embedding round-trip at startup — so a slow/flaky path to Google
+    hangs the whole boot. The dimension is already pinned in settings, so we
+    check it locally against the collection's config instead (one cheap
+    Qdrant call, no Google): same mismatch protection, Google-free startup.
+    """
     client = _make_client()
+    vectors = client.get_collection(settings.qdrant_collection).config.params.vectors
+    size = getattr(vectors, "size", None)  # None for named-vector dict configs
+    if size is not None and size != settings.qdrant_vector_size:
+        raise RuntimeError(
+            f"Qdrant collection '{settings.qdrant_collection}' has vector size "
+            f"{size}, but settings.qdrant_vector_size = "
+            f"{settings.qdrant_vector_size}. Re-run create_db.py (did the "
+            "embedding model change?)."
+        )
     return QdrantVectorStore(
         client=client,
         collection_name=settings.qdrant_collection,
         embedding=get_embedding_model(),
+        validate_collection_config=False,
     )

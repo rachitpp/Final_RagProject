@@ -1,4 +1,5 @@
 import {
+  useCallback,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -8,8 +9,16 @@ import {
   type KeyboardEvent,
 } from "react";
 import { useNavigate } from "react-router-dom";
-import { Dialog } from "radix-ui";
-import { ArrowDown, ArrowUp, Menu, Plus, Square } from "lucide-react";
+import { Dialog, DropdownMenu } from "radix-ui";
+import {
+  ArrowDown,
+  ArrowUp,
+  Download,
+  ListOrdered,
+  Menu,
+  Plus,
+  Square,
+} from "lucide-react";
 import { useChatStream, type Message } from "@/hooks/useChatStream";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
@@ -57,7 +66,7 @@ export default function ChatPage() {
   };
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
-  const lastTurnRef = useRef<HTMLDivElement>(null);
+  const turnRefs = useRef<(HTMLDivElement | null)[]>([]);
   const turnCount = useRef(0);
   const wasStreaming = useRef(false);
 
@@ -118,11 +127,19 @@ export default function ChatPage() {
   // On a NEW question, lift it to the top of the view so the answer has room
   // to stream in below it (ChatGPT-style), instead of staying pinned low.
   useEffect(() => {
+    turnRefs.current.length = turns.length; // drop stale refs after delete/new chat
     if (turns.length > turnCount.current) {
-      lastTurnRef.current?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+      turnRefs.current[turns.length - 1]?.scrollIntoView({
+        behavior: scrollBehavior(),
+        block: "start",
+      });
     }
     turnCount.current = turns.length;
   }, [turns.length]);
+
+  const jumpToTurn = (i: number) => {
+    turnRefs.current[i]?.scrollIntoView({ behavior: scrollBehavior(), block: "start" });
+  };
 
   // Show a "jump to latest" affordance only once the reader has scrolled well
   // up past the current turn (the last turn reserves ~a viewport of space, so
@@ -163,6 +180,46 @@ export default function ChatPage() {
   const pickStarter = (q: string) => {
     if (isStreaming) return;
     send(q);
+  };
+
+  // "Edit and ask again": put the question back in the composer for tweaking.
+  // Stable identity so completed user bubbles keep skipping re-renders (memo).
+  const editQuestion = useCallback((content: string) => {
+    setInput(content);
+    taRef.current?.focus();
+  }, []);
+
+  // Retry/Regenerate for the latest turn. Depends only on the last question, so
+  // typing in the composer doesn't hand the last bubble a fresh callback (which
+  // would re-render + re-parse its markdown on every keystroke).
+  const lastQuestion = turns.at(-1)?.user.content;
+  const retryLast = useCallback(() => {
+    if (lastQuestion && !isStreaming) retry(lastQuestion);
+  }, [lastQuestion, isStreaming, retry]);
+
+  // Serialize the visible transcript to a Markdown file (questions as headers,
+  // answers verbatim — citations and tables survive as-is).
+  const exportConversation = () => {
+    const conv = conversations.find((c) => c.id === activeId);
+    if (!conv || turns.length === 0) return;
+    const parts = [`# ${conv.title}`, ""];
+    for (const t of turns) {
+      parts.push(`## ${t.user.content}`, "");
+      if (t.assistant?.content) parts.push(t.assistant.content.trim(), "");
+    }
+    parts.push("---", "", `*Exported from Policy Assistant · ${new Date().toLocaleString()}*`, "");
+    const blob = new Blob([parts.join("\n")], { type: "text/markdown;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${
+      conv.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") ||
+      "conversation"
+    }.md`;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
   };
 
   return (
@@ -213,6 +270,60 @@ export default function ChatPage() {
         {/* top-edge fade — content dissolves into the paper (desktop only) */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden h-9 bg-gradient-to-b from-paper to-transparent md:block" />
 
+        {/* conversation tools — outline (jump to a question) + export. Floats
+            top-right of the chat column; below the top bar on mobile. */}
+        {turns.length > 0 && (
+          <div className="absolute right-3 top-[3.4rem] z-20 flex items-center gap-1.5 md:top-3">
+            {turns.length > 1 && (
+              <DropdownMenu.Root>
+                <DropdownMenu.Trigger asChild>
+                  <button
+                    type="button"
+                    aria-label="Jump to a question"
+                    title="Jump to a question"
+                    className="flex h-9 w-9 items-center justify-center rounded-full border border-rule-strong bg-paper-4 text-ink-soft shadow-[0_8px_24px_-10px_rgba(0,0,0,0.5)] transition duration-200 hover:bg-paper-3 hover:text-ink"
+                  >
+                    <ListOrdered className="h-4 w-4" />
+                  </button>
+                </DropdownMenu.Trigger>
+                <DropdownMenu.Portal>
+                  <DropdownMenu.Content
+                    side="bottom"
+                    align="end"
+                    sideOffset={8}
+                    className="z-50 max-h-[60vh] w-72 overflow-y-auto rounded-lg border border-rule-strong bg-paper-2 p-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.55)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+                  >
+                    <DropdownMenu.Label className="px-2.5 py-1.5 font-sans text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-faint">
+                      Questions in this chat
+                    </DropdownMenu.Label>
+                    {turns.map((t, i) => (
+                      <DropdownMenu.Item
+                        key={i}
+                        onSelect={() => jumpToTurn(i)}
+                        className="flex cursor-pointer items-start gap-2 rounded-md px-2.5 py-1.5 font-sans text-[0.82rem] text-ink-soft outline-none transition duration-200 data-[highlighted]:bg-paper-3 data-[highlighted]:text-ink"
+                      >
+                        <span className="mt-px shrink-0 font-mono text-[0.68rem] text-ink-faint">
+                          {i + 1}
+                        </span>
+                        <span className="line-clamp-2">{t.user.content}</span>
+                      </DropdownMenu.Item>
+                    ))}
+                  </DropdownMenu.Content>
+                </DropdownMenu.Portal>
+              </DropdownMenu.Root>
+            )}
+            <button
+              type="button"
+              onClick={exportConversation}
+              aria-label="Export chat as Markdown"
+              title="Export chat as Markdown"
+              className="flex h-9 w-9 items-center justify-center rounded-full border border-rule-strong bg-paper-4 text-ink-soft shadow-[0_8px_24px_-10px_rgba(0,0,0,0.5)] transition duration-200 hover:bg-paper-3 hover:text-ink"
+            >
+              <Download className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+
         <main ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
           <div
             className={`mx-auto max-w-3xl px-5 ${
@@ -222,22 +333,24 @@ export default function ChatPage() {
             }`}
           >
             {turns.length === 0 ? (
-              <Welcome onPick={pickStarter} name={profile?.name} />
+              <Welcome onPick={pickStarter} name={profile?.name} band={profile?.band} />
             ) : (
               turns.map((t, ti) => {
                 const isLast = ti === turns.length - 1;
                 return (
                   <div
                     key={ti}
-                    ref={isLast ? lastTurnRef : undefined}
+                    ref={(el) => {
+                      turnRefs.current[ti] = el;
+                    }}
                     className={`scroll-mt-6 ${isLast ? "min-h-[calc(100vh-7rem)]" : ""}`}
                   >
-                    <ChatMessage message={t.user} isStreaming={false} />
+                    <ChatMessage message={t.user} isStreaming={false} onEdit={editQuestion} />
                     {t.assistant && (
                       <ChatMessage
                         message={t.assistant}
                         isStreaming={isStreaming && isLast}
-                        onRetry={isLast ? () => retry(t.user.content) : undefined}
+                        onRetry={isLast && !isStreaming ? retryLast : undefined}
                       />
                     )}
                   </div>

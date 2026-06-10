@@ -83,6 +83,25 @@ def test_chat_forwards_band_and_namespaces_session(ctx):
     assert sess.last_key == "E105:c1"   # memory key namespaced by employee_id
 
 
+def test_chat_rate_limited_per_user(ctx, monkeypatch):
+    """The N+1th /chat inside the window gets 429 + Retry-After; /reset is exempt."""
+    from api.ratelimit import chat_limiter
+
+    monkeypatch.setattr(chat_limiter, "max_attempts", 3)
+    client, _, _ = ctx
+    tok = _token(client)
+    headers = {"Authorization": f"Bearer {tok}"}
+    body = {"question": "da?", "conversation_id": "c1"}
+
+    for _ in range(3):
+        assert client.post("/chat", json=body, headers=headers).status_code == 200
+    r = client.post("/chat", json=body, headers=headers)
+    assert r.status_code == 429
+    assert "Retry-After" in r.headers
+    # Cheap, unmetered endpoints are not throttled by the chat limiter.
+    assert client.post("/reset", json={"conversation_id": "c1"}, headers=headers).status_code == 200
+
+
 def test_reset_requires_auth_and_namespaces(ctx):
     client, _, sess = ctx
     assert client.post("/reset", json={"conversation_id": "c1"}).status_code == 401

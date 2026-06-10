@@ -101,10 +101,10 @@ def _scroll_all_docs(store: QdrantVectorStore) -> List[Document]:
     return docs
 
 
-def build_bm25_retriever(store: QdrantVectorStore) -> BM25Retriever:
-    """Rebuild a single combined BM25 index in-memory from documents already in
-    Qdrant. Kept for the sidebar's Library view (which lists every document)."""
-    docs = _scroll_all_docs(store)
+def build_bm25_retriever(docs: List[Document]) -> BM25Retriever:
+    """Build a single combined BM25 index in-memory from already-scrolled chunks
+    (the caller scrolls Qdrant ONCE and feeds every startup consumer — see
+    RAGPipeline.__init__). Kept for the sidebar's Library view."""
     retriever = BM25Retriever.from_documents(
         docs, preprocess_func=_bm25_tokenize
     )
@@ -112,15 +112,15 @@ def build_bm25_retriever(store: QdrantVectorStore) -> BM25Retriever:
     return retriever
 
 
-def build_bm25_by_scope(store: QdrantVectorStore) -> Dict[str, BM25Retriever]:
+def build_bm25_by_scope(docs: List[Document]) -> Dict[str, BM25Retriever]:
     """
-    Build one BM25 index PER scope (domestic | foreign | leave). BM25 is
-    in-memory and can't be filtered after the fact like the vector store, so we
-    keep a separate index per scope and pick the matching one at query time —
-    the keyword-search equivalent of the vector metadata filter. Keying on
-    `scope` (always present) means no chunk is silently dropped from the index.
+    Build one BM25 index PER scope (domestic | foreign | leave) from
+    already-scrolled chunks. BM25 is in-memory and can't be filtered after the
+    fact like the vector store, so we keep a separate index per scope and pick
+    the matching one at query time — the keyword-search equivalent of the
+    vector metadata filter. Keying on `scope` (always present) means no chunk
+    is silently dropped from the index.
     """
-    docs = _scroll_all_docs(store)
     grouped: Dict[str, List[Document]] = {}
     for d in docs:
         scope = (d.metadata or {}).get("scope")

@@ -1,3 +1,5 @@
+import { ShieldCheck } from "lucide-react";
+
 const STARTERS = [
   ["LODGING", "What's my lodging allowance for a trip to Mumbai?"],
   ["LEAVE", "How many privilege leaves do I get a year?"],
@@ -8,9 +10,11 @@ const STARTERS = [
 export default function Welcome({
   onPick,
   name,
+  band,
 }: {
   onPick: (q: string) => void;
   name?: string;
+  band?: number;
 }) {
   const firstName = name?.trim().split(/\s+/)[0];
 
@@ -25,6 +29,17 @@ export default function Welcome({
       <p className="mt-4 max-w-md animate-rise font-serif text-[1.08rem] leading-relaxed text-ink-soft [animation-delay:180ms]">
         Ask about your travel reimbursements and leave — answers are tailored to you.
       </p>
+
+      {/* make the band-scoping (the product's core promise) visible before the
+          first question is even asked */}
+      {typeof band === "number" && (
+        <div className="mt-5 animate-rise [animation-delay:230ms]">
+          <span className="inline-flex items-center gap-1.5 rounded-full border border-gold/30 bg-gold/10 px-3 py-1.5 font-sans text-[0.76rem] font-medium text-gold">
+            <ShieldCheck className="h-3.5 w-3.5" aria-hidden="true" />
+            Answers scoped to Band {band}
+          </span>
+        </div>
+      )}
 
       <div className="mt-8 grid animate-rise grid-cols-1 gap-2.5 [animation-delay:280ms] sm:grid-cols-2">
         {STARTERS.map(([label, q]) => (

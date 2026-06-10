@@ -85,10 +85,14 @@ class RAGPipeline:
     def __init__(self) -> None:
         store = load_vector_store()
         self.store = store
+        # Scroll the collection ONCE and feed every startup consumer from it
+        # (combined BM25, per-scope BM25, pinned tables) — this used to be
+        # three identical full scrolls over the network.
+        docs = _scroll_all_docs(store)
         # Combined index — used by the sidebar's Library view (lists all docs).
-        self.bm25 = build_bm25_retriever(store)
+        self.bm25 = build_bm25_retriever(docs)
         # Per-scope indexes — used for scope-scoped keyword retrieval.
-        self.bm25_by_scope = build_bm25_by_scope(store)
+        self.bm25_by_scope = build_bm25_by_scope(docs)
         # capability name -> the tool it unlocks; bound per query from the active
         # scopes' capabilities (registry-driven, scales to new tools). Code does
         # the math, the model does the language (llm/tools.py).
@@ -100,7 +104,7 @@ class RAGPipeline:
         self.llm = get_llm(streaming=True)
         # Reference tables resolved ONCE at startup. select_pinned() then picks
         # the right subset per query based on trip type. See retrieval/pinned.py.
-        self.pinned = resolve_pinned(_scroll_all_docs(store))
+        self.pinned = resolve_pinned(docs)
         logger.info("RAG pipeline initialized.")
 
     def _run_tool(self, call: dict) -> str:

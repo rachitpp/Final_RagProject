@@ -36,6 +36,13 @@ class Settings:
     login_rate_max_attempts: int = 5
     login_rate_window_seconds: int = 60
 
+    # Cost throttle on /chat: every call fans out to paid Gemini/Vertex, so cap
+    # how fast a single authenticated user can burn quota. Keyed by employee_id
+    # (the caller is always authenticated there). 20/min is far above human
+    # chat speed but stops a runaway client or script.
+    chat_rate_max_requests: int = 20
+    chat_rate_window_seconds: int = 60
+
     # --- API / CORS ---
     # Browser origins allowed to call the API (comma-separated). Defaults to the
     # Vite dev server; set CORS_ALLOW_ORIGINS to the deployed frontend origin(s)
@@ -109,6 +116,12 @@ class Settings:
 
     # --- Conversation memory ---
     history_window: int = 4  # last N (user, assistant) turns kept
+    # Bounds on the in-memory ConversationStore so it can't grow without limit:
+    # least-recently-used conversations are dropped past max_sessions, and any
+    # conversation idle longer than the TTL expires. Each session holds at most
+    # history_window turns, so the worst case is small and fixed.
+    conversation_max_sessions: int = 1000
+    conversation_ttl_seconds: int = 60 * 60 * 2  # idle for 2h -> evicted
 
     # --- Logging ---
     log_level: str = "WARNING"

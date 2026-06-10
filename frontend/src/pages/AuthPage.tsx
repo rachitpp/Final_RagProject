@@ -1,10 +1,14 @@
-import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
+import {
+  useLayoutEffect,
+  useRef,
+  useState,
+  type FormEvent,
+  type KeyboardEvent,
+} from "react";
 import { useNavigate } from "react-router-dom";
-import { toast } from "sonner";
 import {
   ArrowRight,
   BadgeCheck,
-  Calculator,
   FileText,
   Loader2,
   Moon,
@@ -13,6 +17,7 @@ import {
 } from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
+import { cn } from "@/lib/utils";
 import AuthField from "@/components/auth/AuthField";
 
 /**
@@ -49,6 +54,9 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
   const [confirm, setConfirm] = useState("");
   const [showPw, setShowPw] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [shaking, setShaking] = useState(false);
+  const [capsOn, setCapsOn] = useState(false);
 
   const isLogin = mode === "login";
   const mismatch = !isLogin && confirm !== "" && password !== confirm;
@@ -75,10 +83,24 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
       // Both endpoints return a JWT, so we're authenticated either way.
       navigate("/chat", { replace: true });
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : "Something went wrong.");
+      // Inline, not a toast: the message stays visible until the user retypes,
+      // and the card shake gives the instant "didn't go through" cue.
+      setError(err instanceof Error ? err.message : "Something went wrong.");
+      setShaking(true);
       setSubmitting(false);
     }
   };
+
+  // Field edits clear the inline error (the user is addressing it).
+  const edit = (set: (v: string) => void) => (v: string) => {
+    set(v);
+    setError(null);
+  };
+
+  // Caps-lock detection for the password fields — keydown+keyup so toggling
+  // the CapsLock key itself updates the hint immediately.
+  const trackCaps = (e: KeyboardEvent<HTMLInputElement>) =>
+    setCapsOn(e.getModifierState("CapsLock"));
 
   // Switch between login/activate without dragging stale field state or a
   // half-typed error across the morph.
@@ -86,16 +108,17 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
     setMode(isLogin ? "activate" : "login");
     setPassword("");
     setConfirm("");
+    setError(null);
   };
 
-  // Morph the box height between the two forms (and when the mismatch hint shows
-  // /hides) by measuring the live content and animating to its height.
+  // Morph the box height between the two forms (and when the mismatch/error/
+  // caps-lock hints show/hide) by measuring the live content and animating to it.
   const contentRef = useRef<HTMLDivElement>(null);
   const [boxH, setBoxH] = useState<number | undefined>(undefined);
   useLayoutEffect(() => {
     const el = contentRef.current;
     if (el) setBoxH(el.offsetHeight);
-  }, [mode, mismatch]);
+  }, [mode, mismatch, error, capsOn]);
 
   const showHide = (
     <button
@@ -121,7 +144,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
 
       {/* ── left: branded panel (lg+) — ties sign-in to the product so the form
           isn't a lone card in a void ── */}
-      <aside className="relative hidden w-[46%] max-w-2xl flex-col justify-between overflow-hidden border-r border-rule bg-paper-2 px-12 py-14 lg:flex">
+      <aside className="relative hidden w-[46%] max-w-2xl animate-auth-swap flex-col justify-between overflow-hidden border-r border-rule bg-paper-2 px-12 py-14 lg:flex">
         <div className="relative z-10 font-serif text-lg font-bold tracking-tight text-ink">
           <span className="text-gold" aria-hidden="true">◐</span> Policy Assistant
         </div>
@@ -135,18 +158,24 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
             Sign in to ask about travel reimbursement and leave — every figure is
             grounded in the policy and scoped to your band.
           </p>
-          <ul className="mt-9 flex flex-col gap-4">
-            {[
-              { icon: ShieldCheck, text: "Tailored to your band" },
-              { icon: FileText, text: "Cited to the exact page" },
-              { icon: Calculator, text: "Totals computed in code" },
-            ].map(({ icon: Icon, text }) => (
-              <li key={text} className="flex items-center gap-3 font-sans text-[0.92rem] text-ink-soft">
-                <Icon className="h-4.5 w-4.5 shrink-0 text-gold" />
-                {text}
-              </li>
-            ))}
-          </ul>
+          {/* mini product demo — a faux cited exchange instead of feature bullets
+              (show, don't tell). The chip copies Markdown.tsx's citation chip
+              classes so it looks exactly like the real product. */}
+          <div className="mt-9 rounded-xl border border-rule-strong bg-paper p-5 shadow-[0_18px_48px_-26px_rgba(0,0,0,0.55)]">
+            <p className="font-sans text-[0.84rem] leading-relaxed text-ink-muted">
+              “What's my daily allowance for a 3-day Mumbai trip?”
+            </p>
+            <div className="mt-3.5 border-t border-rule pt-3.5">
+              <p className="font-serif text-[0.95rem] leading-[1.7] text-ink-soft">
+                Your band's metro-city rate applies to all three days — the
+                total is computed from the entitlement table, not estimated.{" "}
+                <cite className="mx-0.5 inline-flex items-center gap-1 whitespace-nowrap rounded-md border border-gold/30 bg-gold/10 px-1.5 py-0.5 align-middle font-mono text-[0.72em] not-italic text-gold">
+                  <FileText className="h-3 w-3" />
+                  domestic travel.pdf, p.2
+                </cite>
+              </p>
+            </div>
+          </div>
         </div>
 
         <div className="relative z-10 font-sans text-[0.76rem] text-ink-faint">
@@ -166,7 +195,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
       <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-12">
       <div className="relative z-10 w-full max-w-sm">
         {/* brand — mobile only (the left panel carries it on lg+) */}
-        <div className="mb-9 text-center font-serif text-lg font-bold tracking-tight text-ink lg:hidden">
+        <div className="mb-9 animate-auth-swap text-center font-serif text-lg font-bold tracking-tight text-ink lg:hidden">
           <span className="text-gold" aria-hidden="true">◐</span> Policy Assistant
         </div>
         {/* title — cross-fades on mode change */}
@@ -179,8 +208,19 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
           </p>
         </div>
 
-        {/* box: border/padding stay put; the inner height morphs between forms */}
-        <div className="mt-8 rounded-2xl border border-rule-strong bg-paper-4 p-7 shadow-[0_10px_36px_-18px_rgba(0,0,0,0.4)]">
+        {/* box: border/padding stay put; the inner height morphs between forms.
+            Entrance lives on the outer wrapper so the shake (re-applied per
+            rejected submit) never replays it. */}
+        <div className="mt-8 animate-auth-swap [animation-delay:60ms]">
+        <div
+          onAnimationEnd={(e) => {
+            if (e.animationName === "auth-shake") setShaking(false);
+          }}
+          className={cn(
+            "rounded-2xl border border-rule-strong bg-paper-4 p-7 shadow-[0_10px_36px_-18px_rgba(0,0,0,0.4)]",
+            shaking && "animate-auth-shake",
+          )}
+        >
           <div
             className="overflow-hidden transition-[height] duration-[540ms] ease-[cubic-bezier(0.16,1,0.3,1)]"
             style={{ height: boxH }}
@@ -191,9 +231,10 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                   autoFocus
                   label="Employee ID"
                   value={employeeId}
-                  onChange={setEmployeeId}
+                  onChange={edit(setEmployeeId)}
                   placeholder="EMP-10427"
                   autoComplete="username"
+                  invalid={!!error}
                 />
 
                 {!isLogin && (
@@ -202,9 +243,10 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                     label="Work email"
                     type="email"
                     value={email}
-                    onChange={setEmail}
+                    onChange={edit(setEmail)}
                     placeholder="you@company.com"
                     autoComplete="email"
+                    invalid={!!error}
                   />
                 )}
 
@@ -213,11 +255,20 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                   label={isLogin ? "Password" : "New password"}
                   type={showPw ? "text" : "password"}
                   value={password}
-                  onChange={setPassword}
+                  onChange={edit(setPassword)}
                   placeholder="••••••••"
                   autoComplete={isLogin ? "current-password" : "new-password"}
                   adornment={showHide}
+                  invalid={!!error}
+                  onKeyDown={trackCaps}
+                  onKeyUp={trackCaps}
                 />
+
+                {capsOn && (
+                  <p className="mt-2 animate-auth-swap font-sans text-[0.76rem] text-gold">
+                    Caps Lock is on.
+                  </p>
+                )}
 
                 {!isLogin && (
                   <AuthField
@@ -225,9 +276,12 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                     label="Confirm password"
                     type={showPw ? "text" : "password"}
                     value={confirm}
-                    onChange={setConfirm}
+                    onChange={edit(setConfirm)}
                     placeholder="••••••••"
                     autoComplete="new-password"
+                    invalid={!!error}
+                    onKeyDown={trackCaps}
+                    onKeyUp={trackCaps}
                   />
                 )}
 
@@ -237,10 +291,19 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                   </p>
                 )}
 
+                {error && (
+                  <p
+                    role="alert"
+                    className="mt-4 animate-auth-swap font-sans text-[0.78rem] leading-relaxed text-destructive"
+                  >
+                    {error}
+                  </p>
+                )}
+
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className="group/btn mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 font-sans text-[0.9rem] font-medium text-paper transition duration-200 hover:bg-ink-soft disabled:bg-paper-5 disabled:text-ink-faint"
+                  className="group/btn mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 font-sans text-[0.9rem] font-semibold text-paper transition duration-200 hover:bg-ink-soft disabled:bg-paper-5 disabled:text-ink-faint"
                 >
                   {submitting ? (
                     <>
@@ -257,6 +320,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
               </form>
             </div>
           </div>
+        </div>
         </div>
 
         {/* switch — flips mode in place (no navigation → no remount → smooth) */}

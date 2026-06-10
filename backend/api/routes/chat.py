@@ -9,6 +9,7 @@ from fastapi import APIRouter, Depends
 from fastapi.responses import StreamingResponse
 
 from api.deps import get_current_user, get_pipeline, get_sessions
+from api.ratelimit import chat_limiter
 from api.schemas import ChatRequest, ResetRequest, UserProfile
 from conversation.store import ConversationStore
 from pipelines.rag_pipeline import RAGPipeline
@@ -29,6 +30,10 @@ def chat(
     sessions: ConversationStore = Depends(get_sessions),
     user: UserProfile = Depends(get_current_user),
 ) -> StreamingResponse:
+    # Per-user cost throttle: raises 429 (with Retry-After) before any paid
+    # Gemini/Vertex work happens.
+    chat_limiter.check(user.employee_id)
+
     memory = sessions.get(_session_key(user, body.conversation_id))
     history = memory.turns()
 

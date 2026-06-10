@@ -72,3 +72,11 @@ login_limiter = SlidingWindowLimiter(
     max_attempts=settings.login_rate_max_attempts,
     window_seconds=settings.login_rate_window_seconds,
 )
+
+# Cost throttle on /chat (every call hits paid Gemini). Keyed by employee_id —
+# the route is auth-gated, so user identity is a stronger key than IP and is
+# unaffected by NAT or a load balancer collapsing client IPs.
+chat_limiter = SlidingWindowLimiter(
+    max_attempts=settings.chat_rate_max_requests,
+    window_seconds=settings.chat_rate_window_seconds,
+)

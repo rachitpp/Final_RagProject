@@ -99,7 +99,11 @@ const components: Components = {
       {children}
     </th>
   ),
-  tr: ({ children }) => <tr className="transition-colors hover:bg-paper-3">{children}</tr>,
+  // Zebra stripes (even: lands on body rows only — a thead has a single row) so
+  // a row stays traceable across a wide rate matrix; hover still wins on top.
+  tr: ({ children }) => (
+    <tr className="transition-colors even:bg-paper-2/50 hover:bg-paper-3">{children}</tr>
+  ),
   td: ({ children }) => (
     <td className="border-b border-rule px-3 py-2 align-top text-ink-soft">
       {chipify(children)}

@@ -19,8 +19,29 @@
   (name · ID · band) with a sign-out menu, a personalized welcome, a
   registry-driven "Policies" list, a full mobile shell (slide-in drawer + top
   bar), and accessibility/polish passes.
-- **Verification is green:** backend `27 passed`; frontend `tsc` + `eslint`
+- **Verification is green:** backend `32 passed`; frontend `tsc` + `eslint`
   (--max-warnings 0) + `vite build` all clean.
+- **Deploy-hardening (2026-06-10):** two abuse/stability holes closed — see below.
+
+---
+
+## Deploy-hardening pass (2026-06-10)
+
+Two contained changes toward deployability; both tested (`32 passed`):
+
+1. **Per-user rate limit on `/chat`** — every call hits paid Gemini, so a
+   `chat_limiter` (reusing `SlidingWindowLimiter`, keyed by `employee_id`, not
+   IP) now returns 429 + `Retry-After` before any paid work. Tunables:
+   `chat_rate_max_requests` / `chat_rate_window_seconds` (20/min) in settings.
+2. **`ConversationStore` is bounded** — was an unbounded dict (slow memory
+   leak / DoS vector). Now an `OrderedDict` LRU capped at
+   `conversation_max_sessions` (1000) with a `conversation_ttl_seconds` (2h)
+   idle expiry, swept lazily on access (O(expired), not O(all)). Eviction only
+   forgets follow-up context; the conversation just restarts with empty memory.
+
+Still open for a real deployment: TLS + production `CORS_ALLOW_ORIGINS` +
+strong `JWT_SECRET` (config, not code), outbound timeouts on Vertex/Qdrant,
+deeper `/health`.
 
 ---
 
@@ -193,8 +214,9 @@ Added dep **`radix-ui`** (`DropdownMenu` + `Dialog`).
 ## Consciously deferred / known limitations (right-sized for an internal tool)
 - **Alembic**: deferred. `init_db()` uses `create_all`; introduce Alembic with the
   *first real schema change* (e.g. leave-accrual columns) as migration #1.
-- **Rate limiter is in-memory/single-process**: resets on restart, not shared.
-  For public/multi-process → edge (nginx/Cloudflare) or Redis; add a per-IP cap.
+- **Rate limiters are in-memory/single-process**: reset on restart, not shared.
+  (`/chat` now has a per-user cap; login a per-IP+id cap.) For public/
+  multi-process → edge (nginx/Cloudflare) or Redis.
 - **JWT has no revocation** (12h expiry; rotate `JWT_SECRET` to invalidate all).
 - **localStorage JWT** (XSS tradeoff documented) → httpOnly+SameSite cookie before
   public exposure.
