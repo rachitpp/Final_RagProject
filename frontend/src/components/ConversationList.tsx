@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useCallback, useState, type KeyboardEvent } from "react";
 import { DropdownMenu } from "radix-ui";
 import { MoreHorizontal, Pencil, Trash2 } from "lucide-react";
 import type { Conversation } from "@/lib/conversations";
@@ -32,11 +32,15 @@ export default function ConversationList({
   const saved = conversations.filter((c) => c.messages.length > 0);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
 
-  useEffect(() => {
-    if (editingId) inputRef.current?.select();
-  }, [editingId]);
+  // Stable ref callback: focuses + selects the rename input when it mounts
+  // (no useEffect, and no `autofocus` attribute — which fires on page load and
+  // disorients screen readers). Stable identity means it runs once on mount,
+  // not on every render.
+  const focusAndSelect = useCallback((el: HTMLInputElement | null) => {
+    el?.focus();
+    el?.select();
+  }, []);
 
   if (saved.length === 0) {
     return (
@@ -80,7 +84,8 @@ export default function ConversationList({
           return (
             <li key={c.id} className="px-0.5 py-0.5">
               <input
-                ref={inputRef}
+                ref={focusAndSelect}
+                aria-label="Rename chat"
                 value={draft}
                 onChange={(e) => setDraft(e.target.value)}
                 onKeyDown={onEditKey}

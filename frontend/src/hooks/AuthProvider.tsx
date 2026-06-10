@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from "react";
 import {
   activate as apiActivate,
   AuthError,
@@ -73,9 +73,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     [],
   );
 
-  return (
-    <AuthContext.Provider value={{ isAuthenticated, profile, login, activate, logout }}>
-      {children}
-    </AuthContext.Provider>
+  // Memoized so context consumers don't re-render on every AuthProvider render
+  // (the callbacks are already stable; only auth state changes flip this).
+  const value = useMemo(
+    () => ({ isAuthenticated, profile, login, activate, logout }),
+    [isAuthenticated, profile, login, activate, logout],
   );
+
+  return <AuthContext.Provider value={value}>{children}</AuthContext.Provider>;
 }

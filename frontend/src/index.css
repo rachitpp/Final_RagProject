@@ -211,6 +211,20 @@ html.light {
     outline: 2px solid var(--ring);
     outline-offset: 2px;
   }
+  /* Kill the browser's autofill paint (the light box Chrome/Safari draw over a
+     saved-credential field) so the login inputs stay seamless with their dark
+     card. The big inset shadow repaints the field surface (paper-4, the card
+     they sit on); the long transition keeps it from flashing white on focus.
+     Both vars flip with the theme, so this is correct in light mode too. */
+  input:-webkit-autofill,
+  input:-webkit-autofill:hover,
+  input:-webkit-autofill:focus,
+  input:-webkit-autofill:active {
+    -webkit-text-fill-color: var(--ink);
+    -webkit-box-shadow: 0 0 0 1000px var(--paper-4) inset;
+    caret-color: var(--ink);
+    transition: background-color 9999s ease-in-out 0s;
+  }
   /* Respect the OS "reduce motion" setting: neutralize entrance/looping
      animations and snap transitions. JS-driven scrolls check the same query. */
   @media (prefers-reduced-motion: reduce) {

@@ -1,4 +1,4 @@
-import { createContext, useContext } from "react";
+import { createContext, use } from "react";
 import type { Profile } from "@/lib/api";
 
 /**
@@ -18,7 +18,7 @@ export interface AuthValue {
 export const AuthContext = createContext<AuthValue | null>(null);
 
 export function useAuth(): AuthValue {
-  const ctx = useContext(AuthContext);
+  const ctx = use(AuthContext);
   if (!ctx) {
     throw new Error("useAuth must be used within an <AuthProvider>");
   }

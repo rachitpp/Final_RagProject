@@ -22,7 +22,7 @@ function setToken(token: string): void {
   localStorage.setItem(TOKEN_KEY, token);
 }
 
-export function clearToken(): void {
+function clearToken(): void {
   localStorage.removeItem(TOKEN_KEY);
 }
 
@@ -49,7 +49,7 @@ async function errorMessage(res: Response): Promise<string> {
     const detail = data?.detail;
     if (typeof detail === "string") return detail;
     if (Array.isArray(detail) && detail.length) {
-      return detail.map((e: { msg?: string }) => e.msg).filter(Boolean).join("; ");
+      return detail.flatMap((e: { msg?: string }) => (e.msg ? [e.msg] : [])).join("; ");
     }
   } catch {
     /* non-JSON body */

@@ -197,24 +197,24 @@ export function SidebarContent({
           <DropdownMenu.Portal>
             <DropdownMenu.Content
               side="top"
-              align="start"
+              align="end"
               sideOffset={8}
-              className="z-50 w-[var(--radix-dropdown-menu-trigger-width)] overflow-hidden rounded-xl border border-rule-strong bg-paper-4 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.55)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
+              className="z-50 min-w-[9.5rem] overflow-hidden rounded-lg border border-rule-strong bg-paper-4 p-1 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.55)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
             >
               <DropdownMenu.Item
                 // Defer opening until the menu has closed, so focus returns
                 // cleanly before the dialog traps it.
                 onSelect={() => setTimeout(() => setProfileOpen(true), 0)}
-                className="flex cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left font-sans text-[0.84rem] text-ink outline-none transition duration-200 data-[highlighted]:bg-paper-3"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left font-sans text-[0.84rem] text-ink outline-none transition duration-200 data-[highlighted]:bg-paper-3"
               >
-                <UserRound className="h-4 w-4 text-ink-faint" /> View profile
+                <UserRound className="h-3.5 w-3.5 text-ink-faint" /> View profile
               </DropdownMenu.Item>
               <DropdownMenu.Separator className="my-1 h-px bg-rule" />
               <DropdownMenu.Item
                 onSelect={onSignOut}
-                className="flex cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left font-sans text-[0.84rem] text-ink outline-none transition duration-200 data-[highlighted]:bg-paper-3"
+                className="flex cursor-pointer items-center gap-2 rounded-md px-2.5 py-1.5 text-left font-sans text-[0.84rem] text-ink outline-none transition duration-200 data-[highlighted]:bg-paper-3"
               >
-                <LogOut className="h-4 w-4 text-ink-faint" /> Sign out
+                <LogOut className="h-3.5 w-3.5 text-ink-faint" /> Sign out
               </DropdownMenu.Item>
             </DropdownMenu.Content>
           </DropdownMenu.Portal>

@@ -48,13 +48,6 @@ export function useChatStream() {
   const [isStreaming, setIsStreaming] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
-  // A live mirror of the list, so event handlers (delete) can read the latest
-  // without taking it as a dependency.
-  const conversationsRef = useRef(conversations);
-  useEffect(() => {
-    conversationsRef.current = conversations;
-  }, [conversations]);
-
   // Persist only when idle: streaming mutates the list on every token, and we
   // don't want a localStorage write per token. The transition out of streaming
   // (and every select/new/delete/rename, which happen while idle) flushes the
@@ -194,16 +187,19 @@ export function useChatStream() {
     setActiveId(id);
   }, []);
 
-  const deleteConversation = useCallback((id: string) => {
-    // Free the server-side memory for this id too (best-effort).
-    resetConversation(id).catch(() => {});
-    const remaining = conversationsRef.current.filter((c) => c.id !== id);
-    const nextList = remaining.length > 0 ? remaining : [newConversation()];
-    setConversations(nextList);
-    setActiveId((cur) =>
-      nextList.some((c) => c.id === cur) ? cur : nextList[0].id,
-    );
-  }, []);
+  const deleteConversation = useCallback(
+    (id: string) => {
+      // Free the server-side memory for this id too (best-effort).
+      resetConversation(id).catch(() => {});
+      const remaining = conversations.filter((c) => c.id !== id);
+      const nextList = remaining.length > 0 ? remaining : [newConversation()];
+      setConversations(nextList);
+      setActiveId((cur) =>
+        nextList.some((c) => c.id === cur) ? cur : nextList[0].id,
+      );
+    },
+    [conversations],
+  );
 
   const renameConversation = useCallback((id: string, title: string) => {
     const trimmed = title.trim();

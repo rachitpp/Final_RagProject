@@ -168,9 +168,7 @@ export default function ChatPage() {
   return (
     <div className="relative flex h-screen overflow-hidden bg-paper text-ink">
       {/* Single polite live region for streaming status (a11y) — see effect above. */}
-      <div role="status" className="sr-only">
-        {liveStatus}
-      </div>
+      <output className="sr-only">{liveStatus}</output>
       <Sidebar {...sidebarProps} />
 
       {/* mobile slide-in drawer — Radix handles focus trap, Escape, scroll lock */}
