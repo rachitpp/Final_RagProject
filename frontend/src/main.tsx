@@ -9,21 +9,30 @@ import { Toaster } from "sonner";
 import "./index.css";
 import { RequireAuth, RequireAnon } from "@/components/guards";
 import { AuthProvider } from "@/hooks/AuthProvider";
-import { AuthPage, ChatPage, LandingPage, RootLayout } from "@/routes";
+// LandingPage retired — `/` now goes straight to login. Re-add `LandingPage`
+// to this import and restore the `/` route below to bring the landing page back.
+import { AuthPage, ChatPage, RootLayout } from "@/routes";
 
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
       {
-        // Public product landing. Signed-in users are sent straight to the app.
+        // Login is the entry point — `/` redirects there. (RequireAnon on
+        // /login sends already-signed-in users on to /chat.)
         path: "/",
-        element: (
-          <RequireAnon>
-            <LandingPage />
-          </RequireAnon>
-        ),
+        element: <Navigate to="/login" replace />,
       },
+      // --- Landing page retired (login is sufficient). To restore, re-add the
+      //     LandingPage import above and swap the `/` route for this block:
+      // {
+      //   path: "/",
+      //   element: (
+      //     <RequireAnon>
+      //       <LandingPage />
+      //     </RequireAnon>
+      //   ),
+      // },
       {
         path: "/chat",
         element: (
