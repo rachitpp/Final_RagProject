@@ -2,10 +2,11 @@ import { Fragment, memo, type ReactNode } from "react";
 import ReactMarkdown, { type Components } from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { FileText } from "lucide-react";
+import { CITATION } from "@/lib/citations";
 
-// Citations look like "(domestic travel.pdf, p.2)" — rendered as gold source
-// chips with a hover tooltip expanding the page reference.
-const CITATION = /\(([^()]+?\.pdf,\s*p\.\d+)\)/gi;
+// Citations look like "(domestic travel.pdf, p.2)" — rendered inline as gold
+// source chips with a hover tooltip expanding the page reference. The pattern
+// is shared with the aggregated Sources footer (see @/lib/citations).
 
 function chipify(node: ReactNode): ReactNode {
   if (typeof node === "string") {

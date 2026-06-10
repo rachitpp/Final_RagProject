@@ -8,8 +8,8 @@ export function RequireAuth({ children }: { children: ReactNode }) {
   return isAuthenticated ? <>{children}</> : <Navigate to="/login" replace />;
 }
 
-/** Keep signed-in users out of the auth screens → send them to the chat. */
+/** Keep signed-in users out of the public/auth screens → send them to the app. */
 export function RequireAnon({ children }: { children: ReactNode }) {
   const { isAuthenticated } = useAuth();
-  return isAuthenticated ? <Navigate to="/" replace /> : <>{children}</>;
+  return isAuthenticated ? <Navigate to="/chat" replace /> : <>{children}</>;
 }

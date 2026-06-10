@@ -9,14 +9,23 @@ import { Toaster } from "sonner";
 import "./index.css";
 import { RequireAuth, RequireAnon } from "@/components/guards";
 import { AuthProvider } from "@/hooks/AuthProvider";
-import { AuthPage, ChatPage, RootLayout } from "@/routes";
+import { AuthPage, ChatPage, LandingPage, RootLayout } from "@/routes";
 
 const router = createBrowserRouter([
   {
     element: <RootLayout />,
     children: [
       {
+        // Public product landing. Signed-in users are sent straight to the app.
         path: "/",
+        element: (
+          <RequireAnon>
+            <LandingPage />
+          </RequireAnon>
+        ),
+      },
+      {
+        path: "/chat",
         element: (
           <RequireAuth>
             <ChatPage />

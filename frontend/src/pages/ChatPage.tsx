@@ -30,7 +30,19 @@ function scrollBehavior(): ScrollBehavior {
 }
 
 export default function ChatPage() {
-  const { messages, isStreaming, send, stop, reset, retry } = useChatStream();
+  const {
+    messages,
+    isStreaming,
+    conversations,
+    activeId,
+    send,
+    stop,
+    reset,
+    retry,
+    selectConversation,
+    deleteConversation,
+    renameConversation,
+  } = useChatStream();
   const { theme, toggle } = useTheme();
   const { logout, profile } = useAuth();
   const navigate = useNavigate();
@@ -41,7 +53,7 @@ export default function ChatPage() {
 
   const onSignOut = () => {
     logout();
-    navigate("/login", { replace: true });
+    navigate("/", { replace: true });
   };
   const scrollRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -56,6 +68,11 @@ export default function ChatPage() {
     onToggleTheme: toggle,
     onSignOut,
     user: profile,
+    conversations,
+    activeId,
+    onSelectConversation: selectConversation,
+    onDeleteConversation: deleteConversation,
+    onRenameConversation: renameConversation,
   };
 
   // Pair the flat message list into (question, answer) turns.
@@ -199,7 +216,13 @@ export default function ChatPage() {
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden h-9 bg-gradient-to-b from-paper to-transparent md:block" />
 
         <main ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
-          <div className="mx-auto max-w-3xl px-5 py-10">
+          <div
+            className={`mx-auto max-w-3xl px-5 ${
+              turns.length === 0
+                ? "flex min-h-full flex-col justify-center pb-10 pt-4"
+                : "py-10"
+            }`}
+          >
             {turns.length === 0 ? (
               <Welcome onPick={pickStarter} name={profile?.name} />
             ) : (

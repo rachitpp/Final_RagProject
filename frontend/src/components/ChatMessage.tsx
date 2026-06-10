@@ -2,6 +2,7 @@ import { memo, useState } from "react";
 import { toast } from "sonner";
 import { AlertTriangle, Check, Copy, RotateCw } from "lucide-react";
 import Markdown from "@/components/Markdown";
+import SourcesPanel from "@/components/SourcesPanel";
 import ThinkingIndicator from "@/components/ThinkingIndicator";
 import type { Message } from "@/hooks/useChatStream";
 
@@ -89,17 +90,20 @@ const ChatMessage = memo(function ChatMessage({
       )}
 
       {!empty && !isStreaming && !message.error && (
-        <div className="mt-3">
-          <button
-            type="button"
-            onClick={copy}
-            aria-label="Copy answer"
-            className="inline-flex items-center gap-1.5 rounded-lg border border-rule-strong px-2.5 py-1 font-sans text-xs text-ink-muted transition duration-200 hover:bg-paper-3 hover:text-ink"
-          >
-            {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
-            {copied ? "Copied" : "Copy"}
-          </button>
-        </div>
+        <>
+          <SourcesPanel content={message.content} />
+          <div className="mt-3">
+            <button
+              type="button"
+              onClick={copy}
+              aria-label="Copy answer"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-rule-strong px-2.5 py-1 font-sans text-xs text-ink-muted transition duration-200 hover:bg-paper-3 hover:text-ink"
+            >
+              {copied ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+              {copied ? "Copied" : "Copy"}
+            </button>
+          </div>
+        </>
       )}
     </div>
   );

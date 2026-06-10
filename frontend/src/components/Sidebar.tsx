@@ -11,9 +11,13 @@ import {
   Plus,
   RotateCw,
   Sun,
+  UserRound,
   type LucideIcon,
 } from "lucide-react";
 import { fetchLibrary, type LibraryInfo, type Profile } from "@/lib/api";
+import type { Conversation } from "@/lib/conversations";
+import ConversationList from "@/components/ConversationList";
+import ProfileDialog from "@/components/ProfileDialog";
 
 /** First letters of the first two name parts, e.g. "Chirag Grover" -> "CG". */
 function initials(name: string): string {
@@ -36,6 +40,11 @@ export interface SidebarProps {
   onToggleTheme: () => void;
   onSignOut: () => void;
   user: Profile | null;
+  conversations: Conversation[];
+  activeId: string;
+  onSelectConversation: (id: string) => void;
+  onDeleteConversation: (id: string) => void;
+  onRenameConversation: (id: string, title: string) => void;
   /** Called after an action that should dismiss the mobile drawer (e.g. New chat). */
   onNavigate?: () => void;
 }
@@ -52,10 +61,16 @@ export function SidebarContent({
   onToggleTheme,
   onSignOut,
   user,
+  conversations,
+  activeId,
+  onSelectConversation,
+  onDeleteConversation,
+  onRenameConversation,
   onNavigate,
 }: SidebarProps) {
   const [lib, setLib] = useState<LibraryInfo | null>(null);
   const [libError, setLibError] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
 
   // State is set only inside the async then/catch — never synchronously in the
   // effect body — so loading the library doesn't trigger a cascading render.
@@ -104,6 +119,21 @@ export function SidebarContent({
 
       <div className="mt-6 border-t border-rule pt-4">
         <div className="font-sans text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-faint">
+          Chats
+        </div>
+        <ConversationList
+          conversations={conversations}
+          activeId={activeId}
+          disabled={disabled}
+          onSelect={onSelectConversation}
+          onDelete={onDeleteConversation}
+          onRename={onRenameConversation}
+          onAfterSelect={onNavigate}
+        />
+      </div>
+
+      <div className="mt-6 border-t border-rule pt-4">
+        <div className="font-sans text-[0.62rem] font-semibold uppercase tracking-[0.18em] text-ink-faint">
           Policies
         </div>
 
@@ -121,7 +151,7 @@ export function SidebarContent({
         ) : !lib ? (
           <div className="mt-2 font-sans text-xs text-ink-muted">Loading…</div>
         ) : (
-          <ul className="mt-2 flex max-h-[55vh] flex-col gap-px overflow-y-auto">
+          <ul className="mt-2 flex max-h-[26vh] flex-col gap-px overflow-y-auto">
             {lib.documents.map((d) => {
               const Icon = TOPIC_ICONS[d.topic] ?? FileText;
               return (
@@ -172,6 +202,15 @@ export function SidebarContent({
               className="z-50 w-[var(--radix-dropdown-menu-trigger-width)] overflow-hidden rounded-xl border border-rule-strong bg-paper-4 shadow-[0_12px_32px_-12px_rgba(0,0,0,0.55)] data-[state=closed]:animate-out data-[state=closed]:fade-out-0 data-[state=closed]:zoom-out-95 data-[state=open]:animate-in data-[state=open]:fade-in-0 data-[state=open]:zoom-in-95"
             >
               <DropdownMenu.Item
+                // Defer opening until the menu has closed, so focus returns
+                // cleanly before the dialog traps it.
+                onSelect={() => setTimeout(() => setProfileOpen(true), 0)}
+                className="flex cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left font-sans text-[0.84rem] text-ink outline-none transition duration-200 data-[highlighted]:bg-paper-3"
+              >
+                <UserRound className="h-4 w-4 text-ink-faint" /> View profile
+              </DropdownMenu.Item>
+              <DropdownMenu.Separator className="my-1 h-px bg-rule" />
+              <DropdownMenu.Item
                 onSelect={onSignOut}
                 className="flex cursor-pointer items-center gap-2 px-3.5 py-2.5 text-left font-sans text-[0.84rem] text-ink outline-none transition duration-200 data-[highlighted]:bg-paper-3"
               >
@@ -180,6 +219,13 @@ export function SidebarContent({
             </DropdownMenu.Content>
           </DropdownMenu.Portal>
         </DropdownMenu.Root>
+
+        <ProfileDialog
+          open={profileOpen}
+          onOpenChange={setProfileOpen}
+          user={user}
+          lib={lib}
+        />
 
         {/* status + theme toggle */}
         <div className="mt-3 flex items-center justify-between">

@@ -15,7 +15,7 @@ export default function Welcome({
   const firstName = name?.trim().split(/\s+/)[0];
 
   return (
-    <div className="pt-14">
+    <div>
       <div className="animate-rise font-sans text-[0.72rem] font-semibold uppercase tracking-[0.18em] text-ink-faint">
         Ready when you are
       </div>

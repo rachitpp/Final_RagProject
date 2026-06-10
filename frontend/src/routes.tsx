@@ -6,6 +6,7 @@ import { Outlet } from "react-router-dom";
 // chunk and the first load only fetches the route actually being viewed.
 export const ChatPage = lazy(() => import("@/pages/ChatPage"));
 export const AuthPage = lazy(() => import("@/pages/AuthPage"));
+export const LandingPage = lazy(() => import("@/pages/LandingPage"));
 
 /** Brand-matched placeholder shown while a route chunk loads. */
 function PageFallback() {

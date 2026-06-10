@@ -1,8 +1,17 @@
-import { useCallback, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { AuthError, resetConversation, streamChat } from "@/lib/api";
 import { useAuth } from "@/hooks/useAuth";
+import {
+  type Conversation,
+  loadActiveId,
+  loadConversations,
+  newConversation,
+  persistActiveId,
+  persistConversations,
+  titleFrom,
+} from "@/lib/conversations";
 
 export interface Message {
   role: "user" | "assistant";
@@ -12,52 +21,99 @@ export interface Message {
   error?: boolean;
 }
 
-const STORAGE_KEY = "conversation_id";
+const EMPTY: Message[] = [];
 
-/** Persist the conversation id so a refresh keeps the same chat memory. */
-function loadConversationId(): string {
-  let id = localStorage.getItem(STORAGE_KEY);
-  if (!id) {
-    id = crypto.randomUUID();
-    localStorage.setItem(STORAGE_KEY, id);
+/** Pick the initial conversation list + active id from storage (once). */
+function initState(): { conversations: Conversation[]; activeId: string } {
+  const stored = loadConversations();
+  if (stored.length > 0) {
+    const saved = loadActiveId();
+    const activeId = stored.some((c) => c.id === saved) ? (saved as string) : stored[0].id;
+    return { conversations: stored, activeId };
   }
-  return id;
+  const fresh = newConversation();
+  return { conversations: [fresh], activeId: fresh.id };
 }
 
 export function useChatStream() {
   const navigate = useNavigate();
   const { logout } = useAuth();
-  const [messages, setMessages] = useState<Message[]>([]);
+
+  // One lazy initializer so the list and the active id come from a SINGLE
+  // initState() call — splitting them into two initializers would let StrictMode
+  // pair a list from one call with an active id from another.
+  const [seed] = useState(initState);
+  const [conversations, setConversations] = useState<Conversation[]>(seed.conversations);
+  const [activeId, setActiveId] = useState<string>(seed.activeId);
   const [isStreaming, setIsStreaming] = useState(false);
-  const [conversationId, setConversationId] = useState<string>(loadConversationId);
   const abortRef = useRef<AbortController | null>(null);
 
-  // Stream an answer into the assistant message currently LAST in the list
-  // (appended by send, or cleared in place by retry), filling it as tokens
-  // arrive. On a hard failure we flag that message `error` and keep it, so the
-  // turn can render an inline retry.
+  // A live mirror of the list, so event handlers (delete) can read the latest
+  // without taking it as a dependency.
+  const conversationsRef = useRef(conversations);
+  useEffect(() => {
+    conversationsRef.current = conversations;
+  }, [conversations]);
+
+  // Persist only when idle: streaming mutates the list on every token, and we
+  // don't want a localStorage write per token. The transition out of streaming
+  // (and every select/new/delete/rename, which happen while idle) flushes the
+  // final state.
+  useEffect(() => {
+    if (!isStreaming) persistConversations(conversations);
+  }, [conversations, isStreaming]);
+
+  useEffect(() => {
+    persistActiveId(activeId);
+  }, [activeId]);
+
+  const messages = useMemo<Message[]>(
+    () => conversations.find((c) => c.id === activeId)?.messages ?? EMPTY,
+    [conversations, activeId],
+  );
+
+  // Replace the LAST message of a specific conversation (the streaming target),
+  // preserving the identity of every other message object so completed bubbles
+  // skip re-render / re-parse (see ChatMessage's memo).
+  const updateLast = useCallback((convId: string, fn: (m: Message) => Message) => {
+    setConversations((prev) =>
+      prev.map((c) => {
+        if (c.id !== convId) return c;
+        const msgs = c.messages.slice();
+        msgs[msgs.length - 1] = fn(msgs[msgs.length - 1]);
+        return { ...c, messages: msgs, updatedAt: Date.now() };
+      }),
+    );
+  }, []);
+
+  const dropLast = useCallback((convId: string) => {
+    setConversations((prev) =>
+      prev.map((c) =>
+        c.id === convId ? { ...c, messages: c.messages.slice(0, -1) } : c,
+      ),
+    );
+  }, []);
+
+  // Stream an answer into the trailing (empty) assistant message of `convId`,
+  // which is captured at call time so a mid-stream conversation switch still
+  // fills the conversation the question was asked in.
   const streamInto = useCallback(
-    async (question: string) => {
+    async (question: string, convId: string) => {
       const controller = new AbortController();
       abortRef.current = controller;
       setIsStreaming(true);
 
       let gotContent = false;
       try {
-        for await (const chunk of streamChat(question, conversationId, controller.signal)) {
+        for await (const chunk of streamChat(question, convId, controller.signal)) {
           gotContent = true;
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, content: last.content + chunk };
-            return next;
-          });
+          updateLast(convId, (last) => ({ ...last, content: last.content + chunk }));
         }
       } catch (err) {
         if (err instanceof AuthError && err.status === 401) {
-          // Token missing/expired: drop the turn, clear the shared auth state
-          // (so the guards see it everywhere), and bounce to login.
-          setMessages((prev) => prev.slice(0, -1));
+          // Token missing/expired: drop the empty turn, clear shared auth state,
+          // and bounce to login.
+          dropLast(convId);
           logout();
           toast.error("Your session has expired. Please sign in again.");
           navigate("/login", { replace: true });
@@ -66,74 +122,108 @@ export function useChatStream() {
         const aborted = (err as Error)?.name === "AbortError";
         if (aborted) {
           // User pressed Stop. Keep partial text; drop the bubble if empty.
-          if (!gotContent) setMessages((prev) => prev.slice(0, -1));
+          if (!gotContent) dropLast(convId);
         } else {
-          // Hard failure: flag the assistant turn (keeping any partial text) so the
-          // UI shows a persistent inline error + Retry instead of a fleeting toast.
-          setMessages((prev) => {
-            const next = [...prev];
-            const last = next[next.length - 1];
-            next[next.length - 1] = { ...last, error: true };
-            return next;
-          });
+          // Hard failure: flag the assistant turn (keeping any partial text) so
+          // the UI shows a persistent inline error + Retry.
+          updateLast(convId, (last) => ({ ...last, error: true }));
         }
       } finally {
         setIsStreaming(false);
         abortRef.current = null;
       }
     },
-    [conversationId, navigate, logout],
+    [updateLast, dropLast, navigate, logout],
   );
 
   const send = useCallback(
     async (question: string) => {
-      // Append the user turn + an empty assistant turn we fill as tokens arrive.
-      setMessages((prev) => [
-        ...prev,
-        { role: "user", content: question },
-        { role: "assistant", content: "" },
-      ]);
-      await streamInto(question);
+      const convId = activeId;
+      // Append the user turn + an empty assistant turn we fill as tokens arrive,
+      // and title the chat from its first question.
+      setConversations((prev) =>
+        prev.map((c) =>
+          c.id === convId
+            ? {
+                ...c,
+                title: c.messages.length === 0 ? titleFrom(question) : c.title,
+                messages: [
+                  ...c.messages,
+                  { role: "user", content: question },
+                  { role: "assistant", content: "" },
+                ],
+                updatedAt: Date.now(),
+              }
+            : c,
+        ),
+      );
+      await streamInto(question, convId);
     },
-    [streamInto],
+    [activeId, streamInto],
   );
 
-  // Re-run the most recent (failed) turn in place: clear the error + any partial
-  // text on the trailing assistant message, then stream into it again. Only the
-  // last turn is ever offered a Retry, so the trailing message is the failed one
-  // — this avoids the duplicate-question bug a plain re-send would cause.
+  // Re-run the most recent (failed) turn in place: clear the error + partial text
+  // on the trailing assistant message, then stream into it again.
   const retry = useCallback(
     async (question: string) => {
-      setMessages((prev) => {
-        const next = [...prev];
-        const last = next[next.length - 1];
-        if (last?.role === "assistant") {
-          next[next.length - 1] = { role: "assistant", content: "" };
-        }
-        return next;
-      });
-      await streamInto(question);
+      const convId = activeId;
+      updateLast(convId, (last) =>
+        last.role === "assistant" ? { role: "assistant", content: "" } : last,
+      );
+      await streamInto(question, convId);
     },
-    [streamInto],
+    [activeId, updateLast, streamInto],
   );
 
   const stop = useCallback(() => {
     abortRef.current?.abort();
   }, []);
 
-  const reset = useCallback(async () => {
+  // Start a fresh chat: a new conversation (hence a new backend memory scope) at
+  // the top, dropping any still-empty chats so the list doesn't accumulate them.
+  const reset = useCallback(() => {
     abortRef.current?.abort();
-    try {
-      await resetConversation(conversationId);
-    } catch {
-      // ignore network errors on reset
-    }
-    const id = crypto.randomUUID();
-    localStorage.setItem(STORAGE_KEY, id);
-    setConversationId(id);
-    setMessages([]);
+    const fresh = newConversation();
+    setConversations((prev) => [fresh, ...prev.filter((c) => c.messages.length > 0)]);
+    setActiveId(fresh.id);
     toast("New chat started.", { duration: 1600 });
-  }, [conversationId]);
+  }, []);
 
-  return { messages, isStreaming, send, stop, reset, retry };
+  const selectConversation = useCallback((id: string) => {
+    abortRef.current?.abort();
+    setActiveId(id);
+  }, []);
+
+  const deleteConversation = useCallback((id: string) => {
+    // Free the server-side memory for this id too (best-effort).
+    resetConversation(id).catch(() => {});
+    const remaining = conversationsRef.current.filter((c) => c.id !== id);
+    const nextList = remaining.length > 0 ? remaining : [newConversation()];
+    setConversations(nextList);
+    setActiveId((cur) =>
+      nextList.some((c) => c.id === cur) ? cur : nextList[0].id,
+    );
+  }, []);
+
+  const renameConversation = useCallback((id: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) return;
+    setConversations((prev) =>
+      prev.map((c) => (c.id === id ? { ...c, title: trimmed } : c)),
+    );
+  }, []);
+
+  return {
+    messages,
+    isStreaming,
+    conversations,
+    activeId,
+    send,
+    stop,
+    reset,
+    retry,
+    selectConversation,
+    deleteConversation,
+    renameConversation,
+  };
 }

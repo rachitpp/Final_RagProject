@@ -1,7 +1,16 @@
 import { useLayoutEffect, useRef, useState, type FormEvent } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
-import { ArrowRight, BadgeCheck, Loader2, Moon, ShieldCheck, Sun } from "lucide-react";
+import {
+  ArrowRight,
+  BadgeCheck,
+  Calculator,
+  FileText,
+  Loader2,
+  Moon,
+  ShieldCheck,
+  Sun,
+} from "lucide-react";
 import { useTheme } from "@/hooks/useTheme";
 import { useAuth } from "@/hooks/useAuth";
 import AuthField from "@/components/auth/AuthField";
@@ -64,7 +73,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         await activate(employeeId.trim(), email.trim(), password);
       }
       // Both endpoints return a JWT, so we're authenticated either way.
-      navigate("/", { replace: true });
+      navigate("/chat", { replace: true });
     } catch (err) {
       toast.error(err instanceof Error ? err.message : "Something went wrong.");
       setSubmitting(false);
@@ -99,8 +108,8 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
   );
 
   return (
-    <div className="relative flex min-h-screen flex-col items-center justify-center bg-paper px-6 py-12 text-ink">
-      {/* theme toggle — top right (stays mounted across the morph) */}
+    <div className="relative flex min-h-screen bg-paper text-ink">
+      {/* theme toggle — top right of the whole screen (stays mounted across morph) */}
       <button
         type="button"
         onClick={toggle}
@@ -110,7 +119,56 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
       </button>
 
+      {/* ── left: branded panel (lg+) — ties sign-in to the product so the form
+          isn't a lone card in a void ── */}
+      <aside className="relative hidden w-[46%] max-w-2xl flex-col justify-between overflow-hidden border-r border-rule bg-paper-2 px-12 py-14 lg:flex">
+        <div className="relative z-10 font-serif text-lg font-bold tracking-tight text-ink">
+          <span className="text-gold" aria-hidden="true">◐</span> Policy Assistant
+        </div>
+
+        <div className="relative z-10 max-w-md">
+          <h2 className="font-serif text-[2.4rem] font-bold leading-[1.08] tracking-tight text-ink">
+            Answers from the policy,{" "}
+            <span className="text-gold-strong">cited to the page.</span>
+          </h2>
+          <p className="mt-5 font-serif text-[1.05rem] leading-relaxed text-ink-soft">
+            Sign in to ask about travel reimbursement and leave — every figure is
+            grounded in the policy and scoped to your band.
+          </p>
+          <ul className="mt-9 flex flex-col gap-4">
+            {[
+              { icon: ShieldCheck, text: "Tailored to your band" },
+              { icon: FileText, text: "Cited to the exact page" },
+              { icon: Calculator, text: "Totals computed in code" },
+            ].map(({ icon: Icon, text }) => (
+              <li key={text} className="flex items-center gap-3 font-sans text-[0.92rem] text-ink-soft">
+                <Icon className="h-4.5 w-4.5 shrink-0 text-gold" />
+                {text}
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="relative z-10 font-sans text-[0.76rem] text-ink-faint">
+          Grounded answers · page-cited · band-aware
+        </div>
+
+        {/* ambient brand glyph, contained to the panel */}
+        <div
+          aria-hidden="true"
+          className="pointer-events-none absolute -bottom-16 -right-12 select-none font-serif text-[20rem] leading-none text-ink opacity-[0.03]"
+        >
+          ◐
+        </div>
+      </aside>
+
+      {/* ── right: the form ── */}
+      <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-12">
       <div className="relative z-10 w-full max-w-sm">
+        {/* brand — mobile only (the left panel carries it on lg+) */}
+        <div className="mb-9 text-center font-serif text-lg font-bold tracking-tight text-ink lg:hidden">
+          <span className="text-gold" aria-hidden="true">◐</span> Policy Assistant
+        </div>
         {/* title — cross-fades on mode change */}
         <div key={`head-${mode}`} className="animate-auth-swap text-center">
           <h1 className="font-serif text-[1.9rem] font-bold leading-[1.08] tracking-tight text-ink">
@@ -233,8 +291,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         </div>
       </div>
 
-      {/* ambient brand watermark, bottom-right */}
-      <div className="brand-watermark" aria-hidden="true">◐</div>
+      </div>
     </div>
   );
 }
