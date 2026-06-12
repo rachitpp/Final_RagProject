@@ -131,7 +131,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
   );
 
   return (
-    <div className="relative flex min-h-screen bg-paper text-ink">
+    <div className="relative flex h-screen overflow-hidden bg-paper text-ink">
       {/* theme toggle — top right of the whole screen (stays mounted across morph) */}
       <button
         type="button"
@@ -191,19 +191,26 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         </div>
       </aside>
 
-      {/* ── right: the form ── */}
-      <div className="relative z-10 flex flex-1 items-center justify-center px-6 py-12">
-      <div className="relative z-10 w-full max-w-sm">
+      {/* ── right: the form ──
+          The page is locked to the viewport (h-screen + overflow-hidden on the
+          root): switching login ⇄ activate grows the CARD, never the document,
+          so no body scrollbar appears and nothing jumps. If the taller activate
+          form exceeds a short viewport, THIS column scrolls internally; my-auto
+          (not items-center) keeps centering safe — an overflowing flex-centered
+          child would clip its top unreachably, auto margins fall back to
+          top-aligned + scrollable. */}
+      <div className="relative z-10 flex flex-1 justify-center overflow-y-auto px-6 py-6">
+      <div className="relative z-10 my-auto w-full max-w-xs">
         {/* brand — mobile only (the left panel carries it on lg+) */}
-        <div className="mb-9 animate-auth-swap text-center font-serif text-lg font-bold tracking-tight text-ink lg:hidden">
+        <div className="mb-5 animate-auth-swap text-center font-serif text-lg font-bold tracking-tight text-ink lg:hidden">
           <span className="text-gold" aria-hidden="true">◐</span> Policy Assistant
         </div>
         {/* title — cross-fades on mode change */}
         <div key={`head-${mode}`} className="animate-auth-swap text-center">
-          <h1 className="font-serif text-[1.9rem] font-bold leading-[1.08] tracking-tight text-ink">
+          <h1 className="font-serif text-[1.6rem] font-bold leading-[1.08] tracking-tight text-ink">
             {COPY[mode].title}
           </h1>
-          <p className="mt-1.5 font-serif text-[1.02rem] leading-relaxed text-ink-soft">
+          <p className="mt-1 font-serif text-[0.94rem] leading-relaxed text-ink-soft">
             {COPY[mode].subtitle}
           </p>
         </div>
@@ -211,13 +218,13 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         {/* box: border/padding stay put; the inner height morphs between forms.
             Entrance lives on the outer wrapper so the shake (re-applied per
             rejected submit) never replays it. */}
-        <div className="mt-8 animate-auth-swap [animation-delay:60ms]">
+        <div className="mt-5 animate-auth-swap [animation-delay:60ms]">
         <div
           onAnimationEnd={(e) => {
             if (e.animationName === "auth-shake") setShaking(false);
           }}
           className={cn(
-            "rounded-2xl border border-rule-strong bg-paper-4 p-7 shadow-[0_10px_36px_-18px_rgba(0,0,0,0.4)]",
+            "rounded-2xl border border-rule-strong bg-paper-4 p-5 shadow-[0_10px_36px_-18px_rgba(0,0,0,0.4)]",
             shaking && "animate-auth-shake",
           )}
         >
@@ -239,7 +246,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
 
                 {!isLogin && (
                   <AuthField
-                    className="mt-6"
+                    className="mt-4"
                     label="Work email"
                     type="email"
                     value={email}
@@ -251,7 +258,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                 )}
 
                 <AuthField
-                  className="mt-6"
+                  className="mt-4"
                   label={isLogin ? "Password" : "New password"}
                   type={showPw ? "text" : "password"}
                   value={password}
@@ -272,7 +279,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
 
                 {!isLogin && (
                   <AuthField
-                    className="mt-6"
+                    className="mt-4"
                     label="Confirm password"
                     type={showPw ? "text" : "password"}
                     value={confirm}
@@ -303,7 +310,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
                 <button
                   type="submit"
                   disabled={!canSubmit}
-                  className="group/btn mt-8 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-3 font-sans text-[0.9rem] font-semibold text-paper transition duration-200 hover:bg-ink-soft disabled:bg-paper-5 disabled:text-ink-faint"
+                  className="group/btn mt-6 flex w-full items-center justify-center gap-2 rounded-lg bg-ink px-4 py-2.5 font-sans text-[0.86rem] font-semibold text-paper transition duration-200 hover:bg-ink-soft disabled:bg-paper-5 disabled:text-ink-faint"
                 >
                   {submitting ? (
                     <>
@@ -324,7 +331,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         </div>
 
         {/* switch — flips mode in place (no navigation → no remount → smooth) */}
-        <div key={`switch-${mode}`} className="mt-6 animate-auth-swap text-center [animation-delay:120ms]">
+        <div key={`switch-${mode}`} className="mt-4 animate-auth-swap text-center [animation-delay:120ms]">
           <button
             type="button"
             onClick={switchMode}
@@ -339,7 +346,7 @@ export default function AuthPage({ initialMode }: { initialMode: Mode }) {
         {/* footer — cross-fades with the mode */}
         <div
           key={`foot-${mode}`}
-          className="mt-8 flex animate-auth-swap items-center justify-center gap-2 text-center font-sans text-[0.76rem] text-ink-faint [animation-delay:180ms]"
+          className="mt-4 flex animate-auth-swap items-center justify-center gap-2 text-center font-sans text-[0.76rem] text-ink-faint [animation-delay:180ms]"
         >
           {isLogin ? (
             <>

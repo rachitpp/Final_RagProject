@@ -78,10 +78,11 @@ Cloud** collection called `rag_documents`, configured for **cosine similarity**
 > first** and recreates it. This prevents stale, leftover chunks from polluting
 > future searches.
 
-It also creates a **keyword payload index on `metadata.policy`**. Qdrant Cloud
-often runs in *strict mode*, which rejects filtering on an unindexed field — so
-this index is what makes the per-policy retrieval filter (Query Step 4) actually
-work, not just a speed-up.
+It also creates **keyword payload indexes on `metadata.policy` and
+`metadata.scope`** (the scope — `domestic | foreign | leave` — is what retrieval
+filters on). Qdrant Cloud often runs in *strict mode*, which rejects filtering
+on an unindexed field — so these indexes are what make the scoped retrieval
+filter (Query Step 4) actually work, not just a speed-up.
 
 When this finishes, your PDFs are fully searchable. You won't run ingestion again
 unless the PDFs change — and re-running it is also how new `policy`/`page`
@@ -101,16 +102,17 @@ Question
 1. Rewrite       (resolve "what about there?" into a standalone question)
    │
    ▼
-2. Classify      (decide Domestic vs Foreign — the single policy-routing decision)
-   │
+2. Route         (which scope(s) the question touches: Domestic / Foreign / Leave
+   │              — multi-label; the single routing decision)
    ▼
 3. HYDE          (optional, currently OFF — richer query for vector search)
    │
    ▼
 4. Hybrid retrieve   BM25 (keywords) + Vector (meaning), BOTH scoped to the
-   │                 chosen policy  →  union & dedupe
+   │                 routed scope(s)  →  union & dedupe
    ▼
-5. Pin tables    (always inject BOTH classification tables + the ACTIVE policy's rate table)
+5. Pin tables    (inject the ACTIVE travel policy's classification + rate tables;
+   │              leave-only questions pin nothing)
    │
    ▼
 6. Format        (stitch chunks into one context string with [source, page] tags)
@@ -139,15 +141,19 @@ It's deliberately conservative:
 - It only rewrites genuine follow-ups — detected by short length or words like
   *it, that, there, same, what about*.
 
-### Step 2 — Classify the policy
+### Step 2 — Route to scope(s)
 **File:** `retrieval/classify.py`
 
-The rewritten question is routed to **one** policy — Domestic (within India) or
-Foreign (overseas) — with a single small LLM call. This is the **one** routing
-decision in the whole system: it drives the retrieval filter, which rate table
-gets pinned, and the answer's grounding line, so they can never disagree. The
-**"assume Domestic when ambiguous" tie-break lives here**, not in the answer
-prompt. On any failure it defaults conservatively to Domestic.
+The rewritten question is routed to the policy **scope(s)** it touches —
+Domestic (within India), Foreign (overseas), and/or Leave — with a single small
+LLM call (multi-label: a combined "travel + leave" question unions both). This
+is the **one** routing decision in the whole system: it drives the retrieval
+filter, which rate table gets pinned, which calculator tools are offered, and
+the answer's grounding line, so they can never disagree. The **"assume Domestic
+when ambiguous" tie-break lives here**, not in the answer prompt — it applies
+when a *trip* is implied but the destination is unclear. If the router LLM
+itself is unreachable (after one retry), the pipeline answers with an honest
+"please try again" instead of guessing a scope.
 
 > Why isolate policy at retrieval instead of in the prompt? Because the two
 > policies reuse the same A/B/C labels and the same abbreviations (e.g. "DA")
@@ -167,22 +173,28 @@ It's **off** here because, on this small corpus, BM25 + vector already find
 almost everything, so HYDE added an LLM call for near-zero gain. The code stays
 ready — flip the setting on if the corpus grows.
 
-### Step 4 — Hybrid retrieval (policy-scoped)
+### Step 4 — Hybrid retrieval (scope-isolated)
 **File:** `retrieval/retrievers.py`
 
-Two complementary searches run, **both restricted to the policy chosen in Step 2**,
-then merged:
+For **each scope routed in Step 2**, two complementary searches run, then merge:
 
 - **BM25 (keyword search)** — great for exact terms ("Category A", "DA"). Uses a
   custom tokenizer (lowercase, strip punctuation) so `Pune.` matches `pune`. A
-  **separate BM25 index per policy** is built at startup; the matching one is used.
+  **separate BM25 index per scope** is built at startup; the matching one is used.
 - **Vector search (meaning search)** — great for paraphrases and synonyms,
-  filtered on `metadata.policy` so only the chosen policy's chunks come back.
+  filtered on `metadata.scope` so only the routed scope's chunks come back.
   (This filter needs a Qdrant payload index — created at ingestion; see Part 1.)
+  The query is embedded **once** and the vector is reused across scopes.
 
-Each returns up to `k = 10` chunks. They're **unioned and de-duplicated** (by
-exact text). Keyword precision + semantic recall = high coverage, all within one
-policy.
+Each leg returns up to `k = 10` chunks. Per-scope results are **unioned and
+de-duplicated** (by exact text). Keyword precision + semantic recall = high
+coverage, all within the routed scope(s).
+
+Scope isolation **fails closed**: if the filtered vector search errors, that
+query degrades to the (still scope-isolated) BM25 leg — there is deliberately
+no unfiltered fallback, because leaking the other policy's chunks (same A/B/C
+labels, different currencies) is worse than finding nothing. An untagged corpus
+is rejected at startup with instructions to re-run `create_db.py`.
 
 ### Step 5 — Pin the reference tables
 **File:** `retrieval/pinned.py`
@@ -193,11 +205,10 @@ tables score *poorly* in similarity search and often get pushed out of the top
 results — exactly when they're needed most.
 
 So instead of hoping search finds them, the pipeline **guarantees** them. At
-startup it resolves each table by a stable text signature; per query it injects:
-- **BOTH** policies' **classification** tables (tiny, and a safety net for the
-  category lookup), and
-- **ONLY the active policy's rate matrix** (so a Domestic answer never sees the
-  Foreign `$` rates, and vice versa).
+startup it resolves each table by a stable text signature; per query it injects
+**only the active travel policy's** classification table and rate matrix (so a
+Domestic answer never sees the Foreign `$` rates, and vice versa). Leave-only
+questions pin nothing — leave has no rate tables.
 
 Retrieval owns *"is the right reference data present?"*; the prompt just looks it
 up instead of guessing.

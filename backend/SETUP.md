@@ -131,13 +131,14 @@ pulls in each package's own dependencies automatically.
 
 ## 6. Add your credentials (`.env`)
 
-The project needs three secrets. Create a file named **`.env`** in the project
+The project needs four secrets. Create a file named **`.env`** in the project
 root:
 
 ```
 GOOGLE_APPLICATION_CREDENTIALS=./your-service-account-key.json
 GOOGLE_CLOUD_PROJECT=your-gcp-project-id
 QDRANT_API_KEY=your-qdrant-api-key
+QDRANT_URL=https://your-cluster.gcp.cloud.qdrant.io
 ```
 
 | Variable | Where to get it |
@@ -145,8 +146,7 @@ QDRANT_API_KEY=your-qdrant-api-key
 | `GOOGLE_APPLICATION_CREDENTIALS` | Path to your GCP service-account JSON key. GCP Console → IAM & Admin → Service Accounts → Keys → Add Key |
 | `GOOGLE_CLOUD_PROJECT` | Your GCP project ID (shown in the console header) |
 | `QDRANT_API_KEY` | Qdrant Cloud dashboard → your cluster → API Keys |
-
-The Qdrant cluster URL itself lives in `config/settings.py` (`qdrant_url`).
+| `QDRANT_URL` | Qdrant Cloud dashboard → your cluster → endpoint URL. Required — there is deliberately no default cluster in source |
 
 > **Keep `.env` private.** It contains secrets and should never be committed to
 > git. (This project's `.gitignore` already excludes it.)

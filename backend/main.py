@@ -20,7 +20,7 @@ def main() -> None:
 
     print("=" * 64)
     print("RAG System Ready")
-    print("Flow: Rewrite -> Classify policy -> Hybrid (BM25 + Vector, per-policy) -> Pin tables -> Gemini")
+    print("Flow: Rewrite -> Route (domestic/foreign/leave) -> Hybrid (BM25 + Vector, per-scope) -> Pin tables -> Gemini (+tools)")
     print("Commands: '0' to exit, 'reset' to clear conversation memory")
     print("=" * 64)
 

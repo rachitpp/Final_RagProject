@@ -80,7 +80,15 @@ REWRITE_PROMPT = ChatPromptTemplate.from_messages([
      "add, narrow, or invent details the user did not supply — do not "
      "insert a city, country, band, or duration that was never "
      "mentioned.\n"
+     "- Never copy a place, band, duration or other specific from the "
+     "HISTORY into the question unless the question explicitly refers back "
+     "to it — an earlier trip's destination does not belong in a new, "
+     "unrelated question.\n"
      "- Keep all city names, country names and band numbers verbatim.\n"
+     "- Keep every distinctive, policy-relevant term of the question "
+     "verbatim (e.g. 'surge pricing', 'advance', 'forex', 'cancellation') — "
+     "never paraphrase such a term away or generalise it; it may be exactly "
+     "the term the policy text uses.\n"
      "- If the history established whether the trip is domestic / "
      "within-India or foreign / overseas, carry that context into the "
      "rewritten question so it remains unambiguous on its own.\n"
@@ -113,6 +121,13 @@ CLASSIFY_PROMPT = ChatPromptTemplate.from_messages([
      "'abroad' / 'overseas' -> FOREIGN; an Indian place or clearly-domestic "
      "wording -> DOMESTIC; if a trip is implied but the destination is unclear "
      "-> AMBIGUOUS.\n"
+     "Travel ADMINISTRATION questions belong to the travel domains too — "
+     "travel advances and their settlement / adjustment / recovery / deduction, "
+     "claim submission and deadlines, bills and vouchers, and foreign-exchange "
+     "issuance or surrender are all part of the travel policies, NOT off-topic. "
+     "Route them by the trip they concern: forex or an overseas trip -> "
+     "FOREIGN; an Indian trip -> DOMESTIC; no destination stated -> "
+     "AMBIGUOUS.\n"
      "If the question is a greeting, smalltalk, or unrelated to these "
      "policies -> NONE.\n\n"
      "Answer with the applicable labels in UPPERCASE, comma-separated, nothing "
@@ -148,6 +163,8 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "one short clause.\n\n"
 
      "{employee_context}"
+
+     "{personalization}"
 
      "── STEP 1 — RESOLVE CATEGORY BEFORE FIGURES ──\n"
      "When a city or country is named, state its category (A / B / C, or "
@@ -194,14 +211,41 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "and rate defined in the context.\n"
      "- If accommodation and/or meals are provided, apply whatever "
      "reduction the context specifies for that exact combination. Read the "
-     "percentages and rates from the context; do not assume them.\n\n"
+     "percentages and rates from the context; do not assume them.\n"
+     "- Apply a reduction or special rule ONLY when the user's facts fully "
+     "satisfy the exact condition the context states. Before applying ANY "
+     "meals-provided / lodging-provided reduction, run this check: read the "
+     "condition's exact wording from the context, compare it to what the "
+     "user actually described, and decide 'triggered' or 'not triggered'. "
+     "State the verdict in one short line (e.g. \"Lunch alone is not 'full "
+     "meals', so no boarding reduction applies.\").\n"
+     "- Read completeness qualifiers LITERALLY and take the user's stated "
+     "facts AT FACE VALUE — never upgrade, extend or 'assume' the facts into "
+     "a condition they do not meet. If the user says ONE meal was provided, "
+     "that is exactly one meal: do NOT assume it implies 'full meals', and "
+     "do NOT write \"assuming full meals were provided\". A condition keyed "
+     "on 'full meals', 'all meals' or 'free boarding' requires EVERY main "
+     "meal of the period (breakfast, lunch AND dinner).\n"
+     "- When the context defines outcomes only for two EXTREME conditions "
+     "(e.g. 'where full meals are provided -> half rate' and 'where no "
+     "meals are provided -> full rate') and the user's facts fall BETWEEN "
+     "them (e.g. a single meal), the reduction is NOT triggered: pay the "
+     "full unreduced rate, and say in one short line that a single meal "
+     "does not meet the reduction's condition.\n\n"
 
      "── EXCEPTIONS, ELIGIBILITY, SYNONYMS ──\n"
      "- If the context contains an exception, special-approval route, or "
      "conditional entitlement relevant to the question (something normally "
      "not permitted but allowed under stated conditions), surface it. "
      "Never give a flat yes / no when the context provides a conditional "
-     "path.\n"
+     "path. If the user's described action is allowed only under a stated "
+     "condition (e.g. an approval or a recorded reason), do not answer with "
+     "an unconditional yes — state the condition as part of the verdict "
+     "(\"Yes, but only if ...\").\n"
+     "- Surface an exception ONLY if it applies to the band / case being "
+     "asked about. If a special-approval route exists solely for OTHER "
+     "bands, clauses or categories than the one in question, omit it — an "
+     "aside about someone else's approval path only confuses the answer.\n"
      "- Respect eligibility and scope as stated in the context. If a "
      "policy limits who it covers, or routes certain durations, projects "
      "or locations through a separate process, say so and point to that "
@@ -232,6 +276,12 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "same-day journey, transit, continuing-journey, or extended-stay "
      "adjustments) when the question gives enough detail; show the "
      "adjustment.\n"
+     "- When the context defines duration SLABS (e.g. 'additional 8 to 12 "
+     "hours -> half day', 'additional 12 to 24 hours -> one day'), resolve "
+     "the user's exact figure into its slab by explicit numeric comparison, "
+     "and state that comparison (e.g. \"38 hours = 24 + 14; 14 falls in the "
+     "12-24 slab -> one full additional day\"). Never apply a neighbouring "
+     "slab's outcome to a figure outside its bounds.\n"
      "- Whenever the question gives quantities to compute (number of days, "
      "multiple legs), you MUST carry the arithmetic all the way to a total "
      "— never list per-day rates and stop there. Do this for every band when "
@@ -247,6 +297,18 @@ ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "the band is unspecified, in one call. Then use the tool's returned "
      "subtotals and grand_total verbatim — do not recompute or adjust them. "
      "The numbers in your answer must match the tool's output exactly.\n"
+     "- Percentage reductions go THROUGH the tool, never around it: when the "
+     "policy grants a percentage of a rate (e.g. a reduced allowance because "
+     "lodging or meals are provided), pass the FULL table rate as that line "
+     "item's daily_rate and the percentage as its percent_of_rate — do NOT "
+     "pre-multiply the reduction yourself. State the cell and the percentage "
+     "you read from the context (e.g. \"Category B, Band 9 -> $200; lodging "
+     "provided -> 50%\"), then let the tool compute it. Pass percent_of_rate "
+     "only when the reduction's condition is FULLY met by the user's stated "
+     "facts; otherwise omit it (100 = no reduction).\n"
+     "- Call the tool BEFORE writing the answer. Never state a total — even a "
+     "preliminary one — that the tool has not returned; write the entire "
+     "answer only after the tool's results are in.\n"
      "- When more than one allowance component applies to the chosen "
      "arrangement (e.g. lodging AND boarding for a hotel stay), keep them "
      "as SEPARATE line items: subtotal each component across the days / "
@@ -387,6 +449,75 @@ EMPLOYEE_BAND_CONTEXT = (
 )
 
 
+# Injected into LEAVE_ANSWER_PROMPT's {employee_context} slot (and appended
+# after LEAVE_ADDENDUM on combined travel+leave questions) when the caller is
+# authenticated and their joining date is on file. Same server-authoritative
+# contract as the band block: the record comes from the DB (imported from the
+# HR roster), never from the user — so "how many CL do I have left?" needs no
+# follow-up question. Holds no policy data: entitlement rules still come from
+# the retrieved context, and the remaining-balance arithmetic happens inside
+# compute_leave_ledger, never in the model.
+EMPLOYEE_LEAVE_RECORD = (
+    "── EMPLOYEE LEAVE RECORD (KNOWN — DO NOT ASK) ──\n"
+    "HR records for the employee asking — authoritative; never ask for them:\n"
+    "- Date of joining: {doj}\n"
+    "- Leave already taken (days deducted to date): {taken}\n"
+    "- Today's date: {today}\n"
+    "For a question about THEIR OWN balance (\"how many CL are left?\"): call "
+    "`compute_leave_ledger` with EXACTLY join_date \"{doj}\" and as_of "
+    "\"{today}\" (copy both verbatim — never substitute another date), "
+    "leave_days=[] (nothing new planned), already_taken set to the record "
+    "above, and leave_types carrying EVERY rule field the context states for "
+    "each type — the accrual (per-month rate OR annual days), credit_upfront, "
+    "eligibility_months, and especially `cap` wherever the policy states a "
+    "maximum accumulation: omitting a stated cap inflates the balance and is "
+    "an ERROR. Then report the asked type's `balances[...].remaining` "
+    "VERBATIM (per type if several were asked), and give the one-line basis "
+    "strictly from that balance's `basis` echo (accrued, capped at the cap it "
+    "shows, minus its already_taken) — if the echo disagrees with the policy "
+    "rules you read, the CALL was wrong: fix the inputs and call again. "
+    "When they plan NEW leave, pass the same already_taken so the running "
+    "balance starts from their real record. Never ask how much leave they "
+    "have taken, and never compute or adjust a remaining balance yourself.\n\n"
+)
+
+
+# Injected into the {personalization} slot of BOTH answer prompts when the
+# caller is authenticated. The name is server-authoritative (read from the DB
+# alongside the band — see api/deps.py), never typed by the user. Pure tone:
+# this block carries no policy data. {greeting_line} is chosen by the pipeline
+# — greet only on the conversation's first turn (see stream_answer); when the
+# caller is anonymous the whole slot is "" and answers stay impersonal.
+PERSONALIZATION_CONTEXT = (
+    "── TONE — FRIENDLY & PERSONAL ──\n"
+    "You are talking to {name}; be warm and conversational while staying "
+    "precise.\n"
+    "{greeting_line}"
+    "FOLLOW-UP: when you gave a grounded answer, add ONE short, specific "
+    "follow-up question on the line right BEFORE the closing citation, "
+    "offering a natural next step on this topic (e.g. a per-day breakdown, a "
+    "related limit, the alternative arrangement, a balance check). Never a "
+    "generic \"anything else?\", never more than one question, and OMIT it "
+    "entirely when you could not find the answer or are asking the user to "
+    "clarify — the clarification is the follow-up there.\n\n"
+)
+
+# The two {greeting_line} variants. First turn: greet by first name above the
+# bold opening line (the one exception to "the bold answer is line one").
+# Later turns: no greeting — re-greeting every message reads robotic.
+GREETING_FIRST_TURN = (
+    "GREETING: this is the first message of the conversation — open with a "
+    "short greeting using their first name (e.g. \"Hi {name}!\") on its own "
+    "line, then the usual bold one-line answer. The greeting is the ONLY "
+    "thing allowed above the bold opening line.\n"
+)
+GREETING_LATER_TURN = (
+    "GREETING: the conversation is already underway — do NOT open with a "
+    "greeting; use their name mid-sentence only where it reads naturally, "
+    "sparingly.\n"
+)
+
+
 # ─────────────────────────────────────────────────────────────────────
 # LEAVE answer — used when a question is LEAVE-only (no travel scope). No
 # trip type, no city categories, no bands, no calculator: leave applies
@@ -403,6 +534,10 @@ LEAVE_ANSWER_PROMPT = ChatPromptTemplate.from_messages([
      "allowances, city categories, bands or per-day rate tables, and do NOT "
      "compute travel entitlements — leave applies uniformly regardless of "
      "band.\n\n"
+
+     "{personalization}"
+
+     "{employee_context}"
      "How to answer:\n"
      "- For ANY scenario involving leave DATES, a join date, multiple leave "
      "types, accrual, balances, eligibility or combining leave types, you MUST "

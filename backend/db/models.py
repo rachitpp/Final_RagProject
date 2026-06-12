@@ -12,7 +12,7 @@
 # =============================================================
 from datetime import date, datetime
 
-from sqlalchemy import Date, DateTime, Integer, String, func
+from sqlalchemy import Date, DateTime, Float, Integer, String, func
 from sqlalchemy.orm import Mapped, mapped_column
 
 from db.base import Base
@@ -31,6 +31,17 @@ class User(Base):
     # Parked for leave accrual; nullable so older rosters without it still import.
     date_of_joining: Mapped[date | None] = mapped_column(Date, nullable=True)
 
+    # Days of each leave type already taken (deducted against the balance the
+    # policy accrues). Roster-owned like band: imported from the sheet's
+    # optional "PL/SL/CL Taken" columns, refreshed on import, NEVER typed by the
+    # user — this is what lets "how many CL do I have left?" be answered without
+    # asking. The entitlement rules stay in the policy PDFs; the remaining-
+    # balance arithmetic happens in compute_leave_ledger, never here or in the
+    # model. (server_default matches the ALTER in db.session._ensure_user_columns.)
+    pl_taken: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    sl_taken: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+    cl_taken: Mapped[float] = mapped_column(Float, nullable=False, default=0.0, server_default="0")
+
     # --- Auth (owned by the app, set at activation — importer must not touch) ---
     password_hash: Mapped[str | None] = mapped_column(String, nullable=True)
     activated_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True), nullable=True)
@@ -48,6 +59,13 @@ class User(Base):
     def is_activated(self) -> bool:
         """True once the user has set a password (first-time activation done)."""
         return self.password_hash is not None
+
+    @property
+    def leave_taken(self) -> dict[str, float]:
+        """Usage keyed by leave-type name exactly as the policy PDF (and the
+        ledger tool's LeaveTypeRule.name) spells it — the shape the pipeline
+        injects and the model passes to compute_leave_ledger's already_taken."""
+        return {"PL": self.pl_taken, "SL": self.sl_taken, "CL": self.cl_taken}
 
     def __repr__(self) -> str:  # pragma: no cover - debugging aid
         return f"<User {self.employee_id} band={self.band} activated={self.is_activated}>"

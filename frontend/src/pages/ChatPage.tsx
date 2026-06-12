@@ -13,8 +13,8 @@ import { Dialog, DropdownMenu } from "radix-ui";
 import {
   ArrowDown,
   ArrowUp,
-  Download,
   ListOrdered,
+  Loader2,
   Menu,
   Plus,
   Square,
@@ -38,7 +38,26 @@ function scrollBehavior(): ScrollBehavior {
     : "smooth";
 }
 
+/**
+ * Gate: the chat must know WHO is signed in before it can open the right
+ * per-user conversation store (lib/conversations.ts namespaces localStorage by
+ * employee_id — Kunal signing in after Rahul must get Kunal's history, not
+ * Rahul's). Hold a quiet veil until /auth/me resolves, then key the view by
+ * employee_id so an account switch remounts it onto that user's own bucket.
+ */
 export default function ChatPage() {
+  const { profile } = useAuth();
+  if (!profile) {
+    return (
+      <div className="flex h-screen items-center justify-center bg-paper">
+        <Loader2 className="h-5 w-5 animate-spin text-ink-faint" />
+      </div>
+    );
+  }
+  return <ChatView key={profile.employee_id} userId={profile.employee_id} />;
+}
+
+function ChatView({ userId }: { userId: string }) {
   const {
     messages,
     isStreaming,
@@ -51,7 +70,7 @@ export default function ChatPage() {
     selectConversation,
     deleteConversation,
     renameConversation,
-  } = useChatStream();
+  } = useChatStream(userId);
   const { theme, toggle } = useTheme();
   const { logout, profile } = useAuth();
   const navigate = useNavigate();
@@ -197,31 +216,6 @@ export default function ChatPage() {
     if (lastQuestion && !isStreaming) retry(lastQuestion);
   }, [lastQuestion, isStreaming, retry]);
 
-  // Serialize the visible transcript to a Markdown file (questions as headers,
-  // answers verbatim — citations and tables survive as-is).
-  const exportConversation = () => {
-    const conv = conversations.find((c) => c.id === activeId);
-    if (!conv || turns.length === 0) return;
-    const parts = [`# ${conv.title}`, ""];
-    for (const t of turns) {
-      parts.push(`## ${t.user.content}`, "");
-      if (t.assistant?.content) parts.push(t.assistant.content.trim(), "");
-    }
-    parts.push("---", "", `*Exported from Policy Assistant · ${new Date().toLocaleString()}*`, "");
-    const blob = new Blob([parts.join("\n")], { type: "text/markdown;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `${
-      conv.title.toLowerCase().replace(/[^\p{L}\p{N}]+/gu, "-").replace(/^-+|-+$/g, "") ||
-      "conversation"
-    }.md`;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
-  };
-
   return (
     <div className="relative flex h-screen overflow-hidden bg-paper text-ink">
       {/* Single polite live region for streaming status (a11y) — see effect above. */}
@@ -270,11 +264,10 @@ export default function ChatPage() {
         {/* top-edge fade — content dissolves into the paper (desktop only) */}
         <div className="pointer-events-none absolute inset-x-0 top-0 z-10 hidden h-9 bg-gradient-to-b from-paper to-transparent md:block" />
 
-        {/* conversation tools — outline (jump to a question) + export. Floats
-            top-right of the chat column; below the top bar on mobile. */}
-        {turns.length > 0 && (
+        {/* conversation tools — outline (jump to a question). Floats top-right
+            of the chat column; below the top bar on mobile. */}
+        {turns.length > 1 && (
           <div className="absolute right-3 top-[3.4rem] z-20 flex items-center gap-1.5 md:top-3">
-            {turns.length > 1 && (
               <DropdownMenu.Root>
                 <DropdownMenu.Trigger asChild>
                   <button
@@ -311,16 +304,6 @@ export default function ChatPage() {
                   </DropdownMenu.Content>
                 </DropdownMenu.Portal>
               </DropdownMenu.Root>
-            )}
-            <button
-              type="button"
-              onClick={exportConversation}
-              aria-label="Export chat as Markdown"
-              title="Export chat as Markdown"
-              className="flex h-9 w-9 items-center justify-center rounded-full border border-rule-strong bg-paper-4 text-ink-soft shadow-[0_8px_24px_-10px_rgba(0,0,0,0.5)] transition duration-200 hover:bg-paper-3 hover:text-ink"
-            >
-              <Download className="h-4 w-4" />
-            </button>
           </div>
         )}
 

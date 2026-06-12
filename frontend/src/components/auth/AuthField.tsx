@@ -62,7 +62,7 @@ export default function AuthField({
           onKeyUp={onKeyUp}
           placeholder={placeholder}
           autoComplete={autoComplete}
-          className="w-full bg-transparent py-2.5 font-sans text-[0.98rem] text-ink outline-none placeholder:text-ink-faint"
+          className="w-full bg-transparent py-2 font-sans text-[0.92rem] text-ink outline-none placeholder:text-ink-faint"
         />
         {adornment}
       </div>

@@ -23,11 +23,11 @@ export interface Message {
 
 const EMPTY: Message[] = [];
 
-/** Pick the initial conversation list + active id from storage (once). */
-function initState(): { conversations: Conversation[]; activeId: string } {
-  const stored = loadConversations();
+/** Pick the user's initial conversation list + active id from storage (once). */
+function initState(userId: string): { conversations: Conversation[]; activeId: string } {
+  const stored = loadConversations(userId);
   if (stored.length > 0) {
-    const saved = loadActiveId();
+    const saved = loadActiveId(userId);
     const activeId = stored.some((c) => c.id === saved) ? (saved as string) : stored[0].id;
     return { conversations: stored, activeId };
   }
@@ -35,14 +35,18 @@ function initState(): { conversations: Conversation[]; activeId: string } {
   return { conversations: [fresh], activeId: fresh.id };
 }
 
-export function useChatStream() {
+/** `userId` scopes the persisted history to the signed-in employee. It is read
+ * once in the lazy seed, so the caller must remount this hook when the user
+ * changes (ChatPage keys the view by employee_id) — a different sign-in then
+ * opens that user's own bucket, never the previous user's transcripts. */
+export function useChatStream(userId: string) {
   const navigate = useNavigate();
   const { logout } = useAuth();
 
   // One lazy initializer so the list and the active id come from a SINGLE
   // initState() call — splitting them into two initializers would let StrictMode
   // pair a list from one call with an active id from another.
-  const [seed] = useState(initState);
+  const [seed] = useState(() => initState(userId));
   const [conversations, setConversations] = useState<Conversation[]>(seed.conversations);
   const [activeId, setActiveId] = useState<string>(seed.activeId);
   const [isStreaming, setIsStreaming] = useState(false);
@@ -53,12 +57,12 @@ export function useChatStream() {
   // (and every select/new/delete/rename, which happen while idle) flushes the
   // final state.
   useEffect(() => {
-    if (!isStreaming) persistConversations(conversations);
-  }, [conversations, isStreaming]);
+    if (!isStreaming) persistConversations(userId, conversations);
+  }, [userId, conversations, isStreaming]);
 
   useEffect(() => {
-    persistActiveId(activeId);
-  }, [activeId]);
+    persistActiveId(userId, activeId);
+  }, [userId, activeId]);
 
   const messages = useMemo<Message[]>(
     () => conversations.find((c) => c.id === activeId)?.messages ?? EMPTY,

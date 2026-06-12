@@ -8,7 +8,7 @@
 # =============================================================
 from typing import Generator
 
-from sqlalchemy import create_engine
+from sqlalchemy import create_engine, inspect, text
 from sqlalchemy.orm import Session, sessionmaker
 
 from config.settings import settings
@@ -31,6 +31,28 @@ def init_db() -> None:
     from db import models  # noqa: F401
 
     Base.metadata.create_all(bind=engine)
+    _ensure_user_columns()
+
+
+def _ensure_user_columns() -> None:
+    """Minimal in-place migration (Alembic is consciously deferred — see
+    docs/PROGRESS.md): create_all() only creates missing TABLES, so a DB file
+    from before a model gained a column would crash every SELECT. ADD any
+    users column listed here that the file lacks. Idempotent; never drops, so
+    activated accounts (password_hash) survive schema growth."""
+    insp = inspect(engine)
+    if not insp.has_table("users"):
+        return
+    have = {c["name"] for c in insp.get_columns("users")}
+    needed = {
+        "pl_taken": "FLOAT NOT NULL DEFAULT 0",
+        "sl_taken": "FLOAT NOT NULL DEFAULT 0",
+        "cl_taken": "FLOAT NOT NULL DEFAULT 0",
+    }
+    with engine.begin() as conn:
+        for name, ddl in needed.items():
+            if name not in have:
+                conn.execute(text(f"ALTER TABLE users ADD COLUMN {name} {ddl}"))
 
 
 def get_db() -> Generator[Session, None, None]:

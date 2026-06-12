@@ -1,4 +1,5 @@
 import re
+from concurrent.futures import ThreadPoolExecutor
 from typing import Dict, List
 from langchain_qdrant import QdrantVectorStore
 from langchain_community.retrievers import BM25Retriever
@@ -25,7 +26,7 @@ def _bm25_tokenize(text: str) -> List[str]:
 
 def vector_search(
     store: QdrantVectorStore,
-    query: str,
+    query_vector: List[float],
     scope: str,
     k: int | None = None,
 ) -> List[Document]:
@@ -34,9 +35,18 @@ def vector_search(
     filter (`metadata.scope == <scope>`). This is where the retriever — not the
     prompt — keeps the domains (domestic | foreign | leave) apart.
 
-    Graceful fallback: if the filtered search returns nothing (e.g. the corpus
-    hasn't been re-ingested with scope tags yet), retry unfiltered so the app
-    keeps working and self-heals once `create_db.py` is re-run.
+    Takes a precomputed query embedding (the caller embeds ONCE per query and
+    reuses it across scopes — `similarity_search(text)` re-embedded the same
+    string on every scope leg, one paid Vertex round-trip each).
+
+    FAIL CLOSED, never sideways: scope isolation is this system's core
+    correctness guarantee (the two travel policies reuse the same A/B/C labels
+    and "DA" in different currencies), so there is NO unfiltered fallback. Zero
+    hits means this scope genuinely has nothing — that flows to the prompt's
+    honest "I could not find the answer" behaviour. A transient Qdrant error
+    degrades to the (still scope-isolated) BM25 leg for this query rather than
+    leaking cross-policy chunks. Untagged corpora are rejected at startup
+    instead (assert_scope_tagged), not papered over here.
     """
     k = k or settings.vector_k
     flt = qmodels.Filter(
@@ -48,26 +58,38 @@ def vector_search(
         ]
     )
     try:
-        docs = store.similarity_search(query, k=k, filter=flt)
+        return store.similarity_search_by_vector(query_vector, k=k, filter=flt)
     except Exception as e:
         status = getattr(e, "status_code", None)
         content = getattr(e, "content", None)
-        logger.warning(
-            "Filtered vector search failed (status=%s, detail=%s); retrying "
-            "unfiltered. If this persists, re-run create_db.py — the "
-            "'metadata.scope' payload index is required for filtering under "
-            "Qdrant strict mode.",
+        logger.error(
+            "Scoped vector search failed (scope=%r, status=%s, detail=%s); "
+            "skipping the vector leg for this query (BM25 still serves). If "
+            "this persists, re-run create_db.py — the 'metadata.scope' payload "
+            "index is required for filtering under Qdrant strict mode.",
+            scope,
             status,
             content or repr(e),
         )
-        return store.similarity_search(query, k=k)
-    if not docs:
-        logger.warning(
-            f"No vector hits for scope={scope!r}. The corpus may predate the "
-            "scope tag — re-run create_db.py. Falling back to unfiltered search."
+        return []
+
+
+def assert_scope_tagged(docs: List[Document]) -> None:
+    """
+    Startup invariant check: every chunk must carry a `scope` tag, because all
+    retrieval (the vector filter AND the per-scope BM25 indexes) isolates on it.
+    The startup scroll already has every chunk in hand, so validating here is
+    free — and failing the boot is strictly better than the old behaviour of
+    silently retrying unfiltered per query, which leaked cross-policy chunks.
+    """
+    untagged = sum(1 for d in docs if not (d.metadata or {}).get("scope"))
+    if untagged:
+        raise RuntimeError(
+            f"{untagged} of {len(docs)} chunk(s) have no 'scope' metadata tag. "
+            "The corpus predates scope-tagged ingestion; scope-isolated "
+            "retrieval cannot work against it. Re-run create_db.py to rebuild "
+            "the collection."
         )
-        return store.similarity_search(query, k=k)
-    return docs
 
 
 def _scroll_all_docs(store: QdrantVectorStore) -> List[Document]:
@@ -153,7 +175,7 @@ def _dedupe(docs: List[Document]) -> List[Document]:
 @traceable(name="hybrid_retrieve")
 def hybrid_retrieve(
     bm25_query: str,
-    vector_query: str,
+    query_vector: List[float] | None,
     store: QdrantVectorStore,
     bm25_by_scope: Dict[str, BM25Retriever],
     scope: str,
@@ -161,8 +183,8 @@ def hybrid_retrieve(
     """
     Hybrid retrieval restricted to ONE scope:
       - BM25 uses the (rewritten) user keywords against the scope's index.
-      - Vector search uses the (optionally HYDE-expanded) query, filtered to the
-        same scope.
+      - Vector search uses the precomputed query embedding, filtered to the
+        same scope (None when embedding failed -> keyword-only this query).
     Results are concatenated + de-duped. Both legs are scope-scoped, so a leave
     query never surfaces travel body chunks (and vice versa).
     """
@@ -175,7 +197,9 @@ def hybrid_retrieve(
             "skipping the keyword leg for this scope."
         )
         bm25_docs = []
-    vec_docs = vector_search(store, vector_query, scope)
+    vec_docs = (
+        vector_search(store, query_vector, scope) if query_vector is not None else []
+    )
     logger.info(
         f"Retrieved BM25={len(bm25_docs)}, Vector={len(vec_docs)} (scope={scope})"
     )
@@ -191,12 +215,33 @@ def multi_scope_retrieve(
     scopes,
 ) -> List[Document]:
     """Run hybrid retrieval once per scope and union + dedupe across them. The
-    router decides `scopes`; a cross-domain question unions travel + leave hits."""
+    router decides `scopes`; a cross-domain question unions travel + leave hits.
+
+    The query is embedded ONCE here and the vector is shared by every scope leg
+    (previously each leg re-embedded the identical string — one extra Vertex
+    round-trip per scope). Multi-scope legs run concurrently: each is an
+    independent network call against the same read-only indexes.
+    """
+    scopes = list(scopes)
+    try:
+        query_vector = store.embeddings.embed_query(vector_query)
+    except Exception as e:
+        # Fail closed to the scope-isolated BM25 legs, never to noise.
+        logger.error(f"Query embedding failed ({e!r}); keyword-only this query.")
+        query_vector = None
+
+    def _leg(scope: str) -> List[Document]:
+        return hybrid_retrieve(bm25_query, query_vector, store, bm25_by_scope, scope)
+
+    if len(scopes) <= 1:
+        per_scope = [_leg(s) for s in scopes]
+    else:
+        with ThreadPoolExecutor(max_workers=len(scopes)) as pool:
+            per_scope = list(pool.map(_leg, scopes))
+
     out: List[Document] = []
-    for scope in scopes:
-        out.extend(
-            hybrid_retrieve(bm25_query, vector_query, store, bm25_by_scope, scope)
-        )
+    for docs in per_scope:
+        out.extend(docs)
     merged = _dedupe(out)
-    logger.info(f"Multi-scope retrieve {list(scopes)} -> {len(merged)} candidate(s)")
+    logger.info(f"Multi-scope retrieve {scopes} -> {len(merged)} candidate(s)")
     return merged

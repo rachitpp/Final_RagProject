@@ -7,7 +7,8 @@ How to install all dependencies for the **backend (FastAPI)** and the
 
 - **Python 3.12+** (the backend `venv` is built on it)
 - **Node.js 18+** (ships with `npm`) — check with `node -v`
-- Credentials in `backend/.env` (Vertex AI service-account JSON + Qdrant API key)
+- Credentials in `backend/.env` (Vertex AI service-account JSON + Qdrant API key
+  + `QDRANT_URL` cluster endpoint — see `backend/.env.example`)
 
 ---
 

@@ -60,4 +60,6 @@ def get_current_user(
             name=user.name,
             band=user.band,
             role=user.role,
+            date_of_joining=user.date_of_joining,
+            leave_taken=user.leave_taken,
         )

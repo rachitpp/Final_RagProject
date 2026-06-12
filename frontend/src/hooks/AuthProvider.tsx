@@ -23,6 +23,10 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     () => getToken() !== null,
   );
   const [profile, setProfile] = useState<Profile | null>(null);
+  // Bumped when another tab swaps the token while we stay "authenticated"
+  // (sign-out + different sign-in over there): same boolean, different user —
+  // the profile must refetch so this tab re-keys onto the right person.
+  const [sessionEpoch, setSessionEpoch] = useState(0);
 
   const logout = useCallback(() => {
     apiLogout();
@@ -46,7 +50,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     return () => {
       cancelled = true;
     };
-  }, [isAuthenticated, logout]);
+  }, [isAuthenticated, sessionEpoch, logout]);
 
   useEffect(() => {
     // Recompute from storage on any change in another tab (covers token
@@ -55,6 +59,9 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       const authed = getToken() !== null;
       setIsAuthenticated(authed);
       if (!authed) setProfile(null);
+      // Still authed ≠ same user: the other tab may have signed in as someone
+      // else. Re-resolve the profile from the (possibly new) token.
+      else setSessionEpoch((e) => e + 1);
     };
     window.addEventListener("storage", sync);
     return () => window.removeEventListener("storage", sync);

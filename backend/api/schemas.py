@@ -1,5 +1,6 @@
 """Request/response models for the API."""
 from dataclasses import dataclass
+from datetime import date
 
 from pydantic import BaseModel, Field
 
@@ -9,13 +10,18 @@ class UserProfile:
     """The authenticated caller, resolved server-side from the JWT's `sub`.
 
     Not a request/response model — an internal value object handed to the
-    pipeline so answers can be scoped to this user's band. `band` is read from
-    the DB per request, never from the token (see api/deps.get_current_user).
+    pipeline so answers can be scoped to this user's band and leave record.
+    Everything here is read from the DB per request, never from the token
+    (see api/deps.get_current_user).
     """
     employee_id: str
     name: str
     band: int
     role: str = "employee"
+    # Leave personalization (None when unknown): joining date drives accrual;
+    # leave_taken is days already deducted per policy type name (e.g. "CL").
+    date_of_joining: date | None = None
+    leave_taken: dict[str, float] | None = None
 
 
 class ActivateRequest(BaseModel):

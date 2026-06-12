@@ -9,6 +9,7 @@ resolve:
 import logging
 from contextlib import asynccontextmanager
 
+import anyio.to_thread
 from dotenv import load_dotenv
 
 load_dotenv()  # load .env (Vertex creds, Qdrant key) before building the pipeline
@@ -39,6 +40,14 @@ async def lifespan(app: FastAPI):
             "value in backend/.env, e.g. `python -c \"import secrets; "
             "print(secrets.token_urlsafe(48))\"`."
         )
+    # Starlette runs every sync endpoint — including the /chat stream generator,
+    # which pins a slot for its whole multi-second duration — in AnyIO's default
+    # threadpool of 40 tokens. At ~40 concurrent chats EVERYTHING queues behind
+    # them (/health, /auth/login, ...). Raise the budget as a stopgap until the
+    # pipeline is async end-to-end.
+    anyio.to_thread.current_default_thread_limiter().total_tokens = (
+        settings.threadpool_tokens
+    )
     # Ensure the users table exists (no-op if already created by the importer).
     init_db()
     # Build the heavy pipeline ONCE (loads vector store, BM25, pinned tables).

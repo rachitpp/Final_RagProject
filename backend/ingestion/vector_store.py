@@ -13,7 +13,17 @@ logger = get_logger(__name__)
 
 
 def _make_client() -> QdrantClient:
-    """Connect to Qdrant Cloud using URL and API key from env."""
+    """Connect to Qdrant Cloud using URL and API key from env.
+
+    Fails fast (like the JWT_SECRET boot check) if QDRANT_URL is unset: a
+    hardcoded fallback URL here once meant anyone running create_db.py with a
+    borrowed key would drop and rebuild the demo cluster's collection."""
+    if not settings.qdrant_url:
+        raise RuntimeError(
+            "QDRANT_URL is not set. Add your Qdrant cluster endpoint to "
+            "backend/.env (see .env.example) — there is deliberately no "
+            "default cluster baked into the source."
+        )
     return QdrantClient(
         url=settings.qdrant_url,
         api_key=os.environ.get("QDRANT_API_KEY"),

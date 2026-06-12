@@ -32,10 +32,18 @@ class Route:
                 the query is leave-only — drives pinning + the answer grounding.
     assumed   : True when a trip was implied but the destination was unclear and
                 we defaulted to Domestic (surfaced to the user in the answer).
+    error     : True when routing itself FAILED (the router LLM was unreachable
+                after a retry). Distinct from assumed: an ambiguous destination
+                is a policy tie-break ("assume Domestic" is doctrine — see
+                backend/CLAUDE.md); an infrastructure failure is not a routing
+                signal at all, so the pipeline answers honestly instead of
+                guessing a scope (a leave question must never silently get the
+                domestic travel corpus + travel prompt).
     """
     scopes: tuple[str, ...]
     trip_type: str | None
     assumed: bool
+    error: bool = False
 
 
 def _parse_route(raw: str) -> Route:
@@ -70,14 +78,26 @@ def _parse_route(raw: str) -> Route:
 def route_query(query: str) -> Route:
     """Route a query to the policy scope(s) it concerns in ONE structured LLM
     call. The result drives scope-filtered retrieval and capability gating
-    (pinning / calculator / band are travel-only). Defaults to Domestic on any
-    failure, so the pipeline always has something to retrieve."""
-    try:
-        messages = CLASSIFY_PROMPT.format_messages(question=query)
-        raw = (_classify_llm().invoke(messages).content or "").strip()
-    except Exception as e:
-        logger.warning(f"Routing failed ({e!r}); assuming domestic")
-        return Route(scopes=("domestic",), trip_type="domestic", assumed=True)
+    (pinning / calculator / band are travel-only).
+
+    Failure handling: retry the call once (transient Vertex hiccups are the
+    common case), then return Route(error=True) so the pipeline tells the user
+    plainly instead of guessing. The old behaviour — default to the domestic
+    corpus + travel prompt — gave a leave question a confident travel answer
+    with a nonsense "Domestic — ASSUMED" caveat. The AMBIGUOUS-destination
+    tie-break (a successful call, unclear destination) still defaults to
+    Domestic in _parse_route, per backend/CLAUDE.md."""
+    messages = CLASSIFY_PROMPT.format_messages(question=query)
+    raw = None
+    for attempt in (1, 2):
+        try:
+            raw = (_classify_llm().invoke(messages).content or "").strip()
+            break
+        except Exception as e:
+            logger.warning(f"Routing attempt {attempt} failed ({e!r})")
+    if raw is None:
+        logger.error("Routing failed after retry; answering with an honest error")
+        return Route(scopes=(), trip_type=None, assumed=False, error=True)
 
     route = _parse_route(raw)
     logger.info(

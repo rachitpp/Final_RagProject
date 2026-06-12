@@ -67,3 +67,36 @@ def test_import_rejects_missing_column(tmp_path):
     xlsx = _write_roster(tmp_path / "roster.xlsx", [row])
     with pytest.raises(RosterValidationError):
         import_employees(xlsx)
+
+
+def test_import_reads_optional_leave_usage(tmp_path):
+    row = {**GOOD_ROW, "PL Taken": 6, "SL Taken": "", "CL Taken": 2.5}
+    xlsx = _write_roster(tmp_path / "roster.xlsx", [row])
+    import_employees(xlsx)
+    with SessionLocal() as db:
+        u = db.get(User, "E900")
+        assert (u.pl_taken, u.sl_taken, u.cl_taken) == (6.0, 0.0, 2.5)  # blank -> 0
+        assert u.leave_taken == {"PL": 6.0, "SL": 0.0, "CL": 2.5}
+
+
+def test_import_without_usage_columns_leaves_existing_values(tmp_path):
+    # First import sets usage; a later roster WITHOUT those columns must not
+    # silently zero it.
+    xlsx = _write_roster(tmp_path / "a.xlsx", [{**GOOD_ROW, "CL Taken": 4}])
+    import_employees(xlsx)
+    xlsx2 = _write_roster(tmp_path / "b.xlsx", [GOOD_ROW])
+    import_employees(xlsx2)
+    with SessionLocal() as db:
+        assert db.get(User, "E900").cl_taken == 4.0
+
+
+def test_import_rejects_negative_leave_usage(tmp_path):
+    xlsx = _write_roster(tmp_path / "roster.xlsx", [{**GOOD_ROW, "CL Taken": -1}])
+    with pytest.raises(RosterValidationError):
+        import_employees(xlsx)
+
+
+def test_import_rejects_non_numeric_leave_usage(tmp_path):
+    xlsx = _write_roster(tmp_path / "roster.xlsx", [{**GOOD_ROW, "PL Taken": "lots"}])
+    with pytest.raises(RosterValidationError):
+        import_employees(xlsx)

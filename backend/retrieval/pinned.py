@@ -13,17 +13,13 @@ logger = get_logger(__name__)
 # they keep losing.
 #
 # Each table is tagged with its policy and kind so pinning can be policy-aware:
-#   - CLASSIFICATION tables (which category a place is) are tiny, and the model
-#     needs a category lookup on almost every question, so BOTH policies'
-#     classification tables are pinned. This is also a safety net if the
-#     upstream trip-type decision is wrong. (This is why the prompt KEEPS its
-#     "never cross-apply one policy's categories to the other" guard — both
-#     A/B/C tables genuinely coexist in context.)
-#   - RATE matrices (the actual amounts, in different currencies) are pinned for
-#     the ACTIVE policy ONLY, so a Domestic answer never sees the Foreign $ rate
-#     matrix and vice versa. With only one rate system ever present, the prompt
-#     no longer needs its "don't mix currencies / DA means different things"
-#     guards.
+# ONLY the ACTIVE policy's tables (classification + rate matrix) are pinned,
+# now that retrieval is scope-filtered — a Domestic answer never sees the
+# Foreign $ rate matrix and vice versa, and a leave query pins nothing. With a
+# single policy's tables ever present, the prompt needs no "don't cross-apply
+# categories / don't mix currencies" guards. (An older design pinned BOTH
+# policies' classification tables as a safety net; that ended with the move to
+# scope-filtered retrieval — see select_pinned.)
 #
 # Matched by a stable content signature (whitespace-normalized substring) so
 # this survives re-ingestion / chunk-id changes.

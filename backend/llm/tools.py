@@ -12,7 +12,7 @@ truth.
 """
 import calendar as _calendar
 from datetime import date, datetime, timedelta
-from typing import List, Optional
+from typing import Dict, List, Optional
 from pydantic import BaseModel, Field
 from langchain_core.tools import tool
 from utils.logger import get_logger
@@ -32,11 +32,23 @@ class LineItem(BaseModel):
         "'Lodging', 'Boarding', 'DA'."
     )
     daily_rate: float = Field(
-        description="The per-day amount for this component on this leg, read "
-        "from the policy table in the context. Number only — no currency symbol."
+        description="The FULL per-day amount for this component on this leg, "
+        "read straight from the policy table in the context. Number only — no "
+        "currency symbol. If the policy reduces the entitlement to a "
+        "percentage, still pass the full table rate here and put the "
+        "percentage in percent_of_rate — never pre-multiply yourself."
     )
-    days: int = Field(
-        description="Number of days this rate applies for this leg."
+    days: float = Field(
+        description="Number of days this rate applies for this leg. May be "
+        "fractional when the policy's timing rules say so (e.g. 0.5 when a "
+        "partial period counts as a half day)."
+    )
+    percent_of_rate: float = Field(
+        100.0,
+        description="The percentage of the full daily_rate the policy grants "
+        "for this leg (e.g. 50 when the context halves the allowance because "
+        "lodging is provided). Read it from the context. Omit (defaults to "
+        "100) when no reduction applies.",
     )
 
 
@@ -53,7 +65,10 @@ def compute_entitlement(line_items: List[LineItem]) -> dict:
     Call this for EVERY question that needs a daily rate multiplied by days or
     summed across legs/components — do NOT do that arithmetic yourself. Read each
     daily_rate from the policy tables in the context and pass one line item per
-    (band, component, leg). Returns, per band: each component's subtotal (the
+    (band, component, leg). When the policy reduces a component to a percentage
+    of the rate (e.g. 50% because lodging is provided), pass the FULL table rate
+    plus that percent_of_rate — the tool applies the reduction, you never
+    pre-multiply. Returns, per band: each component's subtotal (the reduced
     rate×days summed across all legs) and the grand total (sum of the component
     subtotals). Use the returned numbers verbatim in your answer.
     """
@@ -63,9 +78,14 @@ def compute_entitlement(line_items: List[LineItem]) -> dict:
         band = (item.band if hasattr(item, "band") else item["band"]) or "result"
         component = item.component if hasattr(item, "component") else item["component"]
         rate = float(item.daily_rate if hasattr(item, "daily_rate") else item["daily_rate"])
-        days = int(item.days if hasattr(item, "days") else item["days"])
+        days = float(item.days if hasattr(item, "days") else item["days"])
+        pct = (item.percent_of_rate if hasattr(item, "percent_of_rate")
+               else item.get("percent_of_rate", 100.0))
+        pct = 100.0 if pct is None else float(pct)
         bucket = result.setdefault(str(band), {})
-        bucket[str(component)] = bucket.get(str(component), 0.0) + rate * days
+        bucket[str(component)] = (
+            bucket.get(str(component), 0.0) + rate * (pct / 100.0) * days
+        )
 
     out: dict[str, dict[str, float]] = {}
     for band, comps in result.items():
@@ -138,6 +158,8 @@ def compute_leave_ledger(
     leave_types: List[LeaveTypeRule],
     holidays: Optional[List[str]] = None,
     weekend_days: Optional[List[str]] = None,
+    already_taken: Optional[Dict[str, float]] = None,
+    as_of: Optional[str] = None,
 ) -> dict:
     """Deterministically resolve a leave scenario: per-day outcome, deductions
     per type, eligibility violations, and Leave-Without-Pay (LWOP) overflow.
@@ -149,6 +171,13 @@ def compute_leave_ledger(
     weekends/holidays) and the holiday dates from the policy context, enumerate
     the intended leave days with their types, and pass them in. Use the returned
     `deducted`, `lwop_days`, `violations` and `per_day` verbatim.
+
+    `already_taken` maps leave-type name -> days ALREADY deducted before this
+    scenario (the employee's known record); the running balance starts from it.
+    For a pure balance question ("how many CL are left?") pass the record with
+    leave_days=[] and `as_of` = today's ISO date, and read `balances` — each
+    type's remaining = accrual to as_of minus already_taken. Never subtract
+    these yourself.
 
     Logic: a day that is a weekend or holiday is NOT deducted for types with
     exclude_weekend_holiday=True. A day before (join_date + eligibility_months)
@@ -162,7 +191,11 @@ def compute_leave_ledger(
     weekend = {w.strip().lower() for w in (weekend_days or ["Saturday", "Sunday"])}
     rules = {r.name: r for r in leave_types}
 
-    used: dict[str, float] = {r.name: 0.0 for r in leave_types}
+    # Balance per type opens at the known record, not zero — scenario days
+    # then deduct on top of it.
+    used: dict[str, float] = {
+        r.name: float((already_taken or {}).get(r.name, 0.0)) for r in leave_types
+    }
     deducted: dict[str, float] = {r.name: 0.0 for r in leave_types}
     lwop = 0.0
     offs = 0.0
@@ -242,13 +275,34 @@ def compute_leave_ledger(
                 "reason": f"{a} may not be prefixed/suffixed with {b} per policy",
             })
 
-    as_of = max((_parse_date(ld.date) for ld in leave_days), default=join)
+    # Balances are reported as of the caller-supplied date when given, else the
+    # last scenario day, else TODAY (a balance question with no scenario days
+    # has no date to infer; defaulting to the join date would report zero
+    # accrual, which is never what a balance question means).
+    if as_of:
+        as_of_date = _parse_date(as_of)
+    elif leave_days:
+        as_of_date = max(_parse_date(ld.date) for ld in leave_days)
+    else:
+        as_of_date = date.today()
+    # `basis` echoes the exact inputs this balance was computed from, so the
+    # answer's one-line working comes from what the tool actually did — a
+    # mis-passed cap/rate/date is then visible in the answer and the logs
+    # instead of silently producing a wrong but plausible number.
     balances = {
         r.name: {
-            "accrued": round(accrued_to(r, as_of), 2),
+            "accrued": round(accrued_to(r, as_of_date), 2),
             "used": round(used[r.name], 2),
-            "remaining": round(accrued_to(r, as_of) - used[r.name], 2),
-            "as_of": as_of.isoformat(),
+            "remaining": round(accrued_to(r, as_of_date) - used[r.name], 2),
+            "as_of": as_of_date.isoformat(),
+            "basis": {
+                "accrual_per_month": r.accrual_per_month,
+                "annual_days": r.annual_days,
+                "credit_upfront": r.credit_upfront,
+                "cap": r.cap,
+                "join_date": join.isoformat(),
+                "already_taken": round(float((already_taken or {}).get(r.name, 0.0)), 2),
+            },
         }
         for r in leave_types
     }
@@ -264,6 +318,9 @@ def compute_leave_ledger(
     }
     logger.info(
         f"compute_leave_ledger -> deducted={out['deducted']} lwop={out['lwop_days']} "
-        f"violations={len(violations)} combo_violations={len(combination_violations)}"
+        f"violations={len(violations)} combo_violations={len(combination_violations)} "
+        f"remaining={ {k: v['remaining'] for k, v in balances.items()} } "
+        f"as_of={as_of_date.isoformat()} join={join.isoformat()} "
+        f"caps={ {r.name: r.cap for r in leave_types} }"
     )
     return out

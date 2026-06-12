@@ -85,14 +85,13 @@ class Settings:
     llm_max_tokens: int = 2048
 
     # --- Vector store (Qdrant Cloud) ---
-    # Qdrant Cloud endpoint. Env-overridable (12-factor) so a deploy can point at
-    # a different cluster without a code change; the default is the demo cluster.
-    qdrant_url: str = field(
-        default_factory=lambda: os.environ.get(
-            "QDRANT_URL",
-            "https://d42fb55f-4096-4fbf-8b02-a438145dfd84.us-east4-0.gcp.cloud.qdrant.io",
-        )
-    )
+    # Qdrant Cloud endpoint. Like JWT_SECRET this is deployment infrastructure,
+    # not a tunable — it comes from the QDRANT_URL env var (backend/.env) only.
+    # Empty means "must be provided"; the client factory fails fast with an
+    # actionable message (see ingestion/vector_store.py). A hardcoded default
+    # here once let anyone running create_db.py drop and rebuild the shared
+    # demo cluster's collection by accident.
+    qdrant_url: str = field(default_factory=lambda: os.environ.get("QDRANT_URL", ""))
     qdrant_collection: str = "rag_documents"
     qdrant_vector_size: int = 768          # text-embedding-004 -> 768 dims
 
@@ -116,6 +115,12 @@ class Settings:
 
     # --- Conversation memory ---
     history_window: int = 4  # last N (user, assistant) turns kept
+    # The rewriter only needs enough history to resolve a reference, not the
+    # full transcript: feed it the last N turns with each assistant answer
+    # clipped, so a follow-up rewrite isn't a multi-thousand-token call (full
+    # answers include whole rate tables the rewrite never needs).
+    rewrite_history_turns: int = 2
+    rewrite_history_clip_chars: int = 300
     # Bounds on the in-memory ConversationStore so it can't grow without limit:
     # least-recently-used conversations are dropped past max_sessions, and any
     # conversation idle longer than the TTL expires. Each session holds at most
@@ -123,8 +128,21 @@ class Settings:
     conversation_max_sessions: int = 1000
     conversation_ttl_seconds: int = 60 * 60 * 2  # idle for 2h -> evicted
 
+    # --- Server ---
+    # Starlette runs sync endpoints (and the sync /chat stream generator) in
+    # AnyIO's default threadpool, which has only 40 tokens process-wide — and an
+    # active chat pins one for its full multi-second duration, starving /health,
+    # /auth and everything else at ~40 concurrent streams. Raised at startup
+    # (api/main.py). A stopgap until the pipeline goes async end-to-end.
+    threadpool_tokens: int = 120
+
     # --- Logging ---
-    log_level: str = "WARNING"
+    # INFO by default so the pipeline's diagnostic story is actually visible in
+    # production: the routing decision, per-leg retrieval hit counts, rewrite
+    # before/after, and pinned-table resolution all log at INFO — at WARNING
+    # they were silent and a missed retrieval could not be reconstructed.
+    # Env-overridable (LOG_LEVEL=DEBUG|INFO|WARNING|...) per deployment.
+    log_level: str = field(default_factory=lambda: os.environ.get("LOG_LEVEL", "INFO"))
 
 
 settings = Settings()

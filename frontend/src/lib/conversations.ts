@@ -10,9 +10,12 @@ import type { Message } from "@/hooks/useChatStream";
  * right server-side memory (until the server restarts; the visible transcript
  * survives regardless).
  *
- * Single-store, not namespaced per user: this matches the prior behaviour (the
- * old single `conversation_id` was global too) and suits the internal-tool
- * threat model. Revisit if multiple employees ever share one browser profile.
+ * NAMESPACED PER USER: every key is suffixed with the signed-in employee_id, so
+ * each account on this browser has its own bucket — signing in as a different
+ * employee must never surface the previous user's transcripts (mirrors the
+ * backend, which scopes its memory by employee_id:conversation_id). Transcripts
+ * do remain in localStorage after sign-out, readable via devtools — the same
+ * accepted internal-tool tradeoff as the JWT in lib/api.ts.
  */
 export interface Conversation {
   id: string;
@@ -23,10 +26,23 @@ export interface Conversation {
   updatedAt: number;
 }
 
-const STORE_KEY = "conversations_v1";
-const ACTIVE_KEY = "active_conversation_id";
+const STORE_PREFIX = "conversations_v1";
+const ACTIVE_PREFIX = "active_conversation_id";
 /** Cap stored chats so localStorage can't grow without bound. */
 const MAX_CONVERSATIONS = 50;
+
+const storeKey = (userId: string) => `${STORE_PREFIX}:${userId}`;
+const activeKey = (userId: string) => `${ACTIVE_PREFIX}:${userId}`;
+
+// The pre-namespacing build kept ONE global bucket under these bare keys. That
+// data names no owner, and showing it to whoever signs in next is exactly the
+// cross-user leak the namespacing fixes — so it's deleted, never migrated.
+try {
+  localStorage.removeItem(STORE_PREFIX);
+  localStorage.removeItem(ACTIVE_PREFIX);
+} catch {
+  /* private mode — nothing stored there anyway */
+}
 
 /** A new, empty conversation with a fresh id (its backend `conversation_id`). */
 export function newConversation(): Conversation {
@@ -41,10 +57,11 @@ export function titleFrom(question: string): string {
   return firstLine.slice(0, 47).trimEnd() + "…";
 }
 
-/** Load saved conversations (newest first), tolerating a corrupt/missing store. */
-export function loadConversations(): Conversation[] {
+/** Load the user's saved conversations (newest first), tolerating a
+ * corrupt/missing store. */
+export function loadConversations(userId: string): Conversation[] {
   try {
-    const raw = localStorage.getItem(STORE_KEY);
+    const raw = localStorage.getItem(storeKey(userId));
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (!Array.isArray(parsed)) return [];
@@ -58,26 +75,27 @@ export function loadConversations(): Conversation[] {
   }
 }
 
-/** Persist conversations — drops empty chats and caps the count (newest kept). */
-export function persistConversations(list: Conversation[]): void {
+/** Persist the user's conversations — drops empty chats and caps the count
+ * (newest kept). */
+export function persistConversations(userId: string, list: Conversation[]): void {
   try {
     const keep = list
       .filter((c) => c.messages.length > 0)
       .sort((a, b) => b.updatedAt - a.updatedAt)
       .slice(0, MAX_CONVERSATIONS);
-    localStorage.setItem(STORE_KEY, JSON.stringify(keep));
+    localStorage.setItem(storeKey(userId), JSON.stringify(keep));
   } catch {
     // quota / private-mode write failures are non-fatal — history is best-effort
   }
 }
 
-export function loadActiveId(): string | null {
-  return localStorage.getItem(ACTIVE_KEY);
+export function loadActiveId(userId: string): string | null {
+  return localStorage.getItem(activeKey(userId));
 }
 
-export function persistActiveId(id: string): void {
+export function persistActiveId(userId: string, id: string): void {
   try {
-    localStorage.setItem(ACTIVE_KEY, id);
+    localStorage.setItem(activeKey(userId), id);
   } catch {
     /* non-fatal */
   }
